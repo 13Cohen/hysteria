@@ -24,7 +24,8 @@
     "shared_experiment_lock": true,
     "initial_failed_run_reason": "test double incorrectly required receive parser acceptance for zero-payload send; test corrected without production code changes",
     "race_run": false,
-    "integration_run": false
+    "integration_run": false,
+    "scope": "initial non-race candidate test"
   },
   "example": {
     "original_payload_bytes": 250,
@@ -44,5 +45,54 @@
     "Attempted original payload accounting is not delivery accounting.",
     "Authorization is once per complete original datagram, before any send; no new intermediate fragment callbacks.",
     "No throughput/latency claim and no deployment."
-  ]
+  ],
+  "regression_baseline_failed_as_expected": true,
+  "candidate_race_passed": true,
+  "followup": {
+    "tested_candidate_revision": "5140d461e1b9c4a9ca95a0bb4ed7c67edaf392d4",
+    "source_and_test_sha256": {
+      "core/server/server.go": "ba2d564cbd490335eaeea6b16ee08bdaaf9155abda6fa4afaa47c3876180ccc0",
+      "core/server/udp.go": "5f95dc286e4b42b9a2d5fd9f1006ebe896fb3977c6da9d024cf73f6523ca6c08",
+      "core/server/udp_accounting_test.go": "664ea47bf3805641f55dcb91f9ff77fc4503b46db4adc39c5384d79618386811"
+    },
+    "baseline": {
+      "original_io_revision": "9baeab73ed0073add2fba7f837d9dae721ac8576",
+      "start_utc": "2026-10-15T15:33:24Z",
+      "end_utc": "2026-10-15T15:33:38Z",
+      "exit_status": 1,
+      "expected_failure": true,
+      "test_binary_elapsed_seconds": 0.006,
+      "fragmented_original_logger_calls": 4,
+      "concurrent_16_originals_logger_calls": 64,
+      "concurrent_16_originals_accounted_bytes": 8000,
+      "checks_still_passing": [
+        "plain",
+        "zero_payload",
+        "ordinary_failure_still_accounts_attempt",
+        "serialize_drop_still_accounts_attempt",
+        "denied_before_any_send"
+      ]
+    },
+    "candidate_race": {
+      "start_utc": "2026-10-15T15:34:06Z",
+      "end_utc": "2026-10-15T15:35:49Z",
+      "exit_status": 0,
+      "test_binary_elapsed_seconds": 1.1,
+      "command": "go test -p 1 -mod=readonly -count=1 -race -run ^TestUDPPayloadAccounting -v ./server",
+      "race_warning_count": 0
+    },
+    "resources": {
+      "cpu_limit": 0.25,
+      "memory_bytes": 536870912,
+      "network": "none",
+      "source_mount": "read-only",
+      "shared_experiment_lock": true,
+      "goprocs": 1
+    },
+    "not_run": [
+      "end-to-end integration",
+      "network performance load",
+      "production deployment"
+    ]
+  }
 }

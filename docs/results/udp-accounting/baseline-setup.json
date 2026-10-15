@@ -1,0 +1,8 @@
+{
+  "candidate_revision": "5140d461e1b9c4a9ca95a0bb4ed7c67edaf392d4",
+  "baseline_original_commit": "9baeab73ed0073add2fba7f837d9dae721ac8576",
+  "restoration": "Only original udpIOImpl.SendMessage function restored; private candidate sendFragment/sendMessage helpers removed. Three-method fake-QUIC interface retained for test injection. AutoFrag falls back to original SendMessage path because baseline IO lacks sendFragment.",
+  "restored_function_sha256": "9f39509b94b67d082164ab130ec2ee4eb4da18c17d08c449252e226201853b78",
+  "candidate_tree_modified": false,
+  "temporary_baseline_source": "/root/proxy-source-lab/hysteria-accounting-baseline.i9jbqegt"
+}

@@ -83,13 +83,40 @@ concurrent/nil-logger checks passed. The first run at 15:27:40–15:29:17 UTC
 exposed a test-double assumption: it tried to parse a zero-data datagram with a
 receiver that intentionally requires data. The test was corrected to inspect
 its serialized header; production code was unchanged between those runs.
-Race instrumentation, end-to-end integration, and performance acceptance were
-not run for this candidate.
+The initial run did not include race instrumentation; the follow-up below
+adds that check. End-to-end integration and performance acceptance remain
+outside this candidate's verification.
 
 Tests use the shared `/run/lock/pcs-proxy-experiment.lock`, 0.25 CPU, 512 MiB
 memory, one Go worker, and a network-disabled container. UTC start/end and
 exact results are recorded under `docs/results/udp-accounting/`. These are
 correctness tests, not a throughput experiment or production acceptance.
+
+A genuine regression baseline was checked on 2026-10-15 from 15:33:24 to
+15:33:38 UTC. An independent archive of candidate `5140d461e1b9c4a9ca95a0bb4ed7c67edaf392d4`
+retained the exact same tests and fake-QUIC interface, but restored only
+`udpIOImpl.SendMessage` from `9baeab73ed0073add2fba7f837d9dae721ac8576` and
+removed the candidate's private helpers. Consequently `sendMessageAutoFrag`
+used its original `SendMessage` fallback for every fragment. The candidate
+worktree was not changed. The restored function's hash and temporary path are
+in `baseline-setup.json`.
+
+The baseline failed the fragmented-success, first/second-fragment-error,
+fragment-too-large, and concurrent accounting checks. Its small/zero payload,
+initial ordinary error, serialization drop, and rejection cases passed.
+The fragmented success logged four callbacks, and sixteen concurrent original
+250-byte payloads logged 64 callbacks and 8000 bytes instead of 16 callbacks
+and 4000 bytes. `baseline.log` records the expected test failure (exit 1).
+
+The unchanged candidate then passed the same limited tests with `-race` on
+2026-10-15 from 15:34:06 to 15:35:49 UTC. The test binary reported 1.100 seconds;
+the wall window includes race-enabled compilation under the same strict
+0.25 CPU limit. No race warnings occurred. Source was mounted read-only, the
+network was disabled, and the shared experiment lock remained held for this
+run. `candidate-race.log` contains the exact output. No network performance
+load, production rebuild, restart, or deployment was performed. This confirms
+the tested accounting/authorization paths and shared-IO concurrency behavior,
+not end-to-end delivery or whole-server race freedom.
 
 Before deployment, review the difference in callback granularity and run the
 normal release checks. After any future deployment, compare fresh, same-epoch
