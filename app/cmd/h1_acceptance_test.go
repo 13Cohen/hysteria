@@ -117,7 +117,8 @@ func TestH1AcceptanceServer(t *testing.T) {
 	if cfg.Capture {
 		evidenceLogger = capture
 	}
-	serverConfigCore := &server.Config{Conn: udp, TLSConfig: server.TLSConfig{Certificates: []tls.Certificate{cert}}, Authenticator: h1Authenticator{}, TrafficLogger: trafficlogger.NewTrafficStatsServer("synthetic-management-only"), QUICConfig: server.QUICConfig{MaxIdleTimeout: time.Duration(cfg.IdleSeconds) * time.Second}, QUICEvidenceConfig: server.QUICEvidenceConfig{Enabled: cfg.Evidence, StreamEvidence: cfg.Evidence, UDPEvidence: cfg.Evidence, Interval: time.Second}, QUICEvidenceLogger: evidenceLogger}
+	stats := trafficlogger.NewTrafficStatsServer("synthetic-management-only")
+	serverConfigCore := &server.Config{Conn: udp, TLSConfig: server.TLSConfig{Certificates: []tls.Certificate{cert}}, Authenticator: h1Authenticator{}, TrafficLogger: stats, QUICConfig: server.QUICConfig{MaxIdleTimeout: time.Duration(cfg.IdleSeconds) * time.Second}, QUICEvidenceConfig: server.QUICEvidenceConfig{Enabled: cfg.Evidence, StreamEvidence: cfg.Evidence, UDPEvidence: cfg.Evidence, Interval: time.Second}, QUICEvidenceLogger: evidenceLogger}
 	// Use the production app outbound construction, with the same DNS-reuse option
 	// in both evidence modes. Synthetic targets are literals, not Internet names.
 	outboundConfig := serverConfig{Outbounds: []serverConfigOutboundEntry{{Name: "default", Type: "direct", Direct: serverConfigOutboundDirect{UDPResolveReuse: true}}}}
@@ -130,6 +131,8 @@ func TestH1AcceptanceServer(t *testing.T) {
 	}
 	go s.Serve()
 	mux := http.NewServeMux()
+	mux.Handle("/traffic", stats)
+	mux.Handle("/kick", stats)
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		var u syscall.Rusage
 		_ = syscall.Getrusage(syscall.RUSAGE_SELF, &u)
@@ -209,7 +212,11 @@ func h1StartWorker(t *testing.T, ca h1CA, evidence, capture bool, idle int) *h1W
 	if err := os.WriteFile(path, body, 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(os.Args[0], "-test.run=^TestH1AcceptanceServer$", "-test.timeout=10m")
+	binary := os.Args[0]
+	if override := os.Getenv("PCS_H1_SERVER_BINARY"); override != "" {
+		binary = override
+	}
+	cmd := exec.Command(binary, "-test.run=^TestH1AcceptanceServer$", "-test.timeout=10m")
 	cmd.Env = append(os.Environ(), "PCS_H1_HELPER=1", "PCS_H1_SETTINGS="+path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
