@@ -151,9 +151,9 @@ func (s *trafficStatsServerImpl) getTraffic(w http.ResponseWriter, r *http.Reque
 
 func (s *trafficStatsServerImpl) getOnline(w http.ResponseWriter, r *http.Request) {
 	s.Mutex.RLock()
-	defer s.Mutex.RUnlock()
-
 	jb, err := json.Marshal(s.OnlineMap)
+	s.Mutex.RUnlock()
+	// A slow API reader must not hold up traffic accounting for every client.
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
