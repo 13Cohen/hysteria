@@ -1,0 +1,29 @@
+{
+  "recorded_before_build_or_run_at": "2026-10-15T18:43:52.816985+00:00",
+  "purpose": "Separate transfer length from warmup/settle confounding: repeat4connection2MiB totalbulk with all H3 warmup/measurement rules unchanged. Never replaces H2 or H3; original release HOLD remains.",
+  "H3_source": "2d75416",
+  "H3_server_binary_reuse": true,
+  "client_protocol_code": "baseline BBR; new opt-in test harness only, same client implementation",
+  "connections": 4,
+  "total_bulk_bytes": 2097152,
+  "small_requests": 16,
+  "small_bytes": 8192,
+  "order": [
+    "baseline",
+    "candidate",
+    "candidate",
+    "baseline"
+  ],
+  "warmup": "Same H3 fixed256KiB total split sequentially across connections;1.1s settle;64KiB total concurrent resume; beforeCPU only afterward.",
+  "network": "Same shared4Mbps down/2Mbps up,80ms propagation per direction,64KiB queues,no extra impairment; bounded queue may drop.",
+  "measurement": "Same H3 exact TCP completion and after1.1s flush RUSAGE snapshots, user/system CPU, contexts,existing H1 samples.",
+  "resource_limits": {
+    "cpus": 0.4,
+    "memory_bytes": 536870912,
+    "GOMAXPROCS": 1,
+    "network": "none",
+    "lock": "/run/lock/pcs-proxy-experiment.lock"
+  },
+  "validity": "Exact2,228,224B received; simulator scheduling p95<=5ms and cgroup throttling<=10percent; no gate reclassification.",
+  "no_expansion": "No mixedUDP run or pprof pair."
+}

@@ -1,0 +1,28 @@
+{
+  "recorded_at": "2026-10-15T18:45:52.609403+00:00",
+  "source_parent": "2d75416a99f3be7122dc73c377424ad56bd63414",
+  "server_binaries": "Identical H3 binaries, hashes verified before H4 measurement",
+  "client_runtime": "baseline original9baeab7 BBR override",
+  "Go": "1.25.6",
+  "CGO_ENABLED": 0,
+  "build_lock_start": "2026-10-15T18:45:07Z",
+  "build_lock_end": "2026-10-15T18:45:27Z",
+  "files": {
+    "h4-baseline.test": {
+      "bytes": 24225110,
+      "sha256": "c7a1bf3e083c7dc2efd11e0430105acf831cc0e5cff79d509df8a86c1beb2e1e"
+    },
+    "app/cmd/h4_warm_acceptance_test.go": {
+      "bytes": 5770,
+      "sha256": "43676906837bd8fa8e0182cf273d159209b50047db175d05112b082bbaf7513c"
+    },
+    "steady-baseline.test": {
+      "bytes": 24196215,
+      "sha256": "5154a8155d8cd30f38492cef4375d72751732bdf8b3311d99c8f278a0ce6a8b4"
+    },
+    "steady-candidate.test": {
+      "bytes": 24195999,
+      "sha256": "5a8ad7ec627a812a34aaec91313fee70abf064215566653a18604bf2913cc33d"
+    }
+  }
+}
