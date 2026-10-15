@@ -1,0 +1,201 @@
+{
+  "experiment": "Opt-in direct UDP system-DNS fallback result reuse",
+  "source_commit": "fb236a901616e696735800a0fd185d77631c0f1c",
+  "base_commit": "7883462",
+  "toolchain": "Go 1.25.6 linux/amd64, CGO_ENABLED=1",
+  "resources": {
+    "cpus": 0.25,
+    "memory_mib": 512,
+    "memory_plus_swap_mib": 1024,
+    "GOMAXPROCS": 1,
+    "GOMEMLIMIT": "384MiB"
+  },
+  "limits": {
+    "enabled_by_default": false,
+    "per_udp_socket_entries": 32,
+    "exact_key": "host+port",
+    "local_lifetime_seconds": 10,
+    "dns_ttl_available": false
+  },
+  "results": [
+    {
+      "run": "normal",
+      "command": "go test -mod=readonly -p 1 ./outbounds ./outbounds/acl ./outbounds/speedtest -count=1 -timeout=90s -v",
+      "exit_status": 0,
+      "completed_utc": "2026-10-15T14:42:48Z",
+      "ipv6_loopback_enabled": false,
+      "ipv6_initially_skipped": true,
+      "observations": [
+        {
+          "enabled": false,
+          "packets": 16,
+          "intact": 16,
+          "dns_queries": 32,
+          "A": 16,
+          "AAAA": 16,
+          "fixture_dns_delay_ms": 5,
+          "elapsed_ms": 98.532
+        },
+        {
+          "enabled": true,
+          "packets": 16,
+          "intact": 16,
+          "dns_queries": 2,
+          "A": 1,
+          "AAAA": 1,
+          "fixture_dns_delay_ms": 5,
+          "elapsed_ms": 6.094
+        }
+      ],
+      "packages": [
+        {
+          "package": "github.com/apernet/hysteria/extras/v2/outbounds",
+          "test_seconds": 0.242
+        },
+        {
+          "package": "github.com/apernet/hysteria/extras/v2/outbounds/acl",
+          "test_seconds": 4.179
+        },
+        {
+          "package": "github.com/apernet/hysteria/extras/v2/outbounds/speedtest",
+          "test_seconds": 0.014
+        }
+      ],
+      "raw_log_sha256": "98b4353dce1cc8399b2f434604201495d9876005e9577d59a6b4dba1a9cc0aed",
+      "excerpt_file": "normal.txt"
+    },
+    {
+      "run": "race",
+      "command": "go test -race -mod=readonly -p 1 ./outbounds ./outbounds/acl ./outbounds/speedtest -count=3 -timeout=90s -v",
+      "exit_status": 0,
+      "completed_utc": "2026-10-15T14:45:54Z",
+      "ipv6_loopback_enabled": false,
+      "ipv6_initially_skipped": true,
+      "observations": [
+        {
+          "enabled": false,
+          "packets": 16,
+          "intact": 16,
+          "dns_queries": 32,
+          "A": 16,
+          "AAAA": 16,
+          "fixture_dns_delay_ms": 5,
+          "elapsed_ms": 192.942
+        },
+        {
+          "enabled": true,
+          "packets": 16,
+          "intact": 16,
+          "dns_queries": 2,
+          "A": 1,
+          "AAAA": 1,
+          "fixture_dns_delay_ms": 5,
+          "elapsed_ms": 8.184
+        },
+        {
+          "enabled": false,
+          "packets": 16,
+          "intact": 16,
+          "dns_queries": 32,
+          "A": 16,
+          "AAAA": 16,
+          "fixture_dns_delay_ms": 5,
+          "elapsed_ms": 132.03
+        },
+        {
+          "enabled": true,
+          "packets": 16,
+          "intact": 16,
+          "dns_queries": 2,
+          "A": 1,
+          "AAAA": 1,
+          "fixture_dns_delay_ms": 5,
+          "elapsed_ms": 7.587
+        },
+        {
+          "enabled": false,
+          "packets": 16,
+          "intact": 16,
+          "dns_queries": 32,
+          "A": 16,
+          "AAAA": 16,
+          "fixture_dns_delay_ms": 5,
+          "elapsed_ms": 120.899
+        },
+        {
+          "enabled": true,
+          "packets": 16,
+          "intact": 16,
+          "dns_queries": 2,
+          "A": 1,
+          "AAAA": 1,
+          "fixture_dns_delay_ms": 5,
+          "elapsed_ms": 8.827
+        }
+      ],
+      "packages": [
+        {
+          "package": "github.com/apernet/hysteria/extras/v2/outbounds",
+          "test_seconds": 1.853
+        },
+        {
+          "package": "github.com/apernet/hysteria/extras/v2/outbounds/acl",
+          "test_seconds": 72.509
+        },
+        {
+          "package": "github.com/apernet/hysteria/extras/v2/outbounds/speedtest",
+          "test_seconds": 1.3
+        }
+      ],
+      "raw_log_sha256": "dcf0ab6cae020ed9fb379a1ae4cc3cc38ad058e9d8f877583da99efc2f2a73d6",
+      "excerpt_file": "race.txt"
+    },
+    {
+      "run": "race-ipv6",
+      "command": "go test -race -mod=readonly -p 1 ./outbounds -count=1 -timeout=30s -v",
+      "exit_status": 0,
+      "completed_utc": "2026-10-15T14:46:57Z",
+      "ipv6_loopback_enabled": true,
+      "ipv6_initially_skipped": false,
+      "observations": [
+        {
+          "enabled": false,
+          "packets": 16,
+          "intact": 16,
+          "dns_queries": 32,
+          "A": 16,
+          "AAAA": 16,
+          "fixture_dns_delay_ms": 5,
+          "elapsed_ms": 186.095
+        },
+        {
+          "enabled": true,
+          "packets": 16,
+          "intact": 16,
+          "dns_queries": 2,
+          "A": 1,
+          "AAAA": 1,
+          "fixture_dns_delay_ms": 5,
+          "elapsed_ms": 9.261
+        }
+      ],
+      "packages": [
+        {
+          "package": "github.com/apernet/hysteria/extras/v2/outbounds",
+          "test_seconds": 1.333
+        }
+      ],
+      "raw_log_sha256": "04a7e7a58b9548f3650ee80fac6cd0f54544610fa2d5058271a800a90d2dc9dc",
+      "excerpt_file": "race-ipv6.txt"
+    }
+  ],
+  "dns_query_reduction_percent": 93.75,
+  "notes": [
+    "All targets and DNS in the new fixtures are loopback or synthetic .test names. No production proxy changed.",
+    "Initial normal/race containers had IPv6 disabled; final focused race enabled only the isolated container IPv6 namespace, with no skipped IPv6/bind test.",
+    "IPv4/IPv6 binding and local-send-failure recovery tests were added after the first normal/race run and passed in the final focused race run.",
+    "An initial broad package selection was stopped before its unrelated public DoH tests, then narrowed to three relevant packages; it is not counted as a successful validation run.",
+    "Artificial 5ms DNS query delay measures avoidable work, not expected production throughput improvement.",
+    "Custom resolver/ACL adapter behavior remains outside the candidate scope."
+  ]
+}
