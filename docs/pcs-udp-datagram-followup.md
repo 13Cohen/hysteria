@@ -2,8 +2,8 @@
 
 Status: read-only source analysis and isolated experiment design. No production,
 H1 release, transport dependency, negotiated parameter, queue size or protocol
-behavior is changed. The new pure-memory diagnostic has been prepared; its
-execution status is recorded below. The source basis is Hysteria v2.6.4
+behavior is changed. The pure-memory diagnostic was executed; its result and
+precise resource window are recorded below. The source basis is Hysteria v2.6.4
 2146852 and its pinned apernet/quic-go eb32f8aec5e2. Later H1 counters are useful
 evidence but do not make the underlying transmission reliable.
 
@@ -164,8 +164,25 @@ bounded-reassembly acceptance gate. No protocol fix is proposed for deployment
 until memory/frame-count bounds, expiry, PacketID reuse, adversarial fragment
 input and cross-session isolation have their own tests.
 
-Execution status: **prepared, not yet run** (shared experiment lock unavailable
-at the first attempt). No runtime conclusion is claimed yet.
+Execution on the unchanged v2.6.4 frag/protocol implementation reproduced the
+interleaving behavior. All four A0,B0,A1,B1 fragments were delivered to Feed;
+**zero packets completed**. Ordered A0,A1,B0,B1 completed two packets; within-packet
+reordering and duplicate-fragment controls completed one intact packet; a partial
+A followed by a complete B delivered B correctly.
+
+The diagnostic passed in 0.004 s. The explicit future isolation gate failed as
+expected in 0.077 s. A diagnostic PASS validates the reproduction and controls,
+not an existing fix. Both calls ran in an isolated, network-disabled container
+with 0.25 CPU / 384 MiB RAM / 768 MiB RAM+swap, Go1.25.6 and GOMAXPROCS=1.
+The exact wall-clock window including compilation/container overhead was
+**2026-10-15 15:10:09–15:10:21 UTC**; exclude it from contemporaneous production
+CPU comparisons. The experiment lock was then released and no further build or
+load was started. The first lock attempt had not started a test.
+
+Commands, hashes, resource bounds and complete synthetic test output are in
+[`results/20261015-udp-datagram-followup/results.json`](results/20261015-udp-datagram-followup/results.json).
+No reassembly behavior was changed. This reproduces an official implementation
+property and does not establish that the current Shadowrocket client has it.
 
 Separately, baseline server.go:358 accounts len(msg.Data) **before** SendDatagram.
 If a 1350-byte message returns too-large, sendMessageAutoFrag retries its two
@@ -196,3 +213,12 @@ cap is the cause of fragmentation, any larger-datagram experiment must use a
 compatible client and respect the negotiated cap; a server cannot safely ignore
 it. Authentication, encryption, congestion control, anti-amplification and
 multi-connection isolation remain acceptance requirements.
+
+## Source anchors
+
+- [Hysteria UDP message format](../core/internal/protocol/proxy.go) and
+  [fragmentation/reassembly](../core/internal/frag/frag.go), unchanged from 2146852.
+- [Pinned quic-go SendDatagram and ACK/MTU handling](https://github.com/apernet/quic-go/blob/eb32f8aec5e2/connection.go),
+  [DATAGRAM queues](https://github.com/apernet/quic-go/blob/eb32f8aec5e2/datagram_queue.go),
+  [packet packing](https://github.com/apernet/quic-go/blob/eb32f8aec5e2/packet_packer.go),
+  and [MTU discovery](https://github.com/apernet/quic-go/blob/eb32f8aec5e2/mtu_discoverer.go).

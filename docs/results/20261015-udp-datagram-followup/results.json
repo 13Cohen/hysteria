@@ -1,0 +1,65 @@
+{
+  "experiment": "Pure-memory Hysteria defragmentation interleaving diagnostic",
+  "source_commit": "4f7df4458bbf43fc6f3bd4a5043521e9d7d9e8ed",
+  "implementation_identical_to": "2146852c483b7e4f68f405023034b8241bfc49c6",
+  "implementation_files": [
+    "core/internal/frag/frag.go",
+    "core/internal/protocol/proxy.go"
+  ],
+  "started_utc": "2026-10-15T15:10:09Z",
+  "finished_utc": "2026-10-15T15:10:21Z",
+  "toolchain": "Go1.25.6 linux/amd64",
+  "resource_cap": {
+    "cpu": 0.25,
+    "ram_mib": 384,
+    "ram_and_swap_mib": 768,
+    "GOMAXPROCS": 1,
+    "GOMEMLIMIT": "256MiB",
+    "network": "none"
+  },
+  "commands": [
+    "go test -mod=readonly -p 1 ./internal/frag -run '^TestDefragInterleavingDiagnostic$' -count=1 -timeout=10s -v",
+    "PCS_REQUIRE_INTERLEAVED_DEFRAG=1 go test -mod=readonly -p 1 ./internal/frag -run '^TestDefragInterleavingDiagnostic$' -count=1 -timeout=10s -v"
+  ],
+  "results": [
+    {
+      "name": "diagnostic",
+      "exit_status": 0,
+      "expected_exit_status": 0,
+      "package_seconds": 0.004,
+      "interleaved_complete_packets": 0,
+      "interleaved_expected_for_future_gate": 2,
+      "controls_passed": [
+        "in_order",
+        "within_packet_reorder",
+        "duplicate_fragment",
+        "missing_fragment_then_complete_packet"
+      ],
+      "raw_sha256": "0739b7300f5be74b949bdc4c393183eb175d71941896750d86694b8753e46270",
+      "output_file": "diagnostic.txt"
+    },
+    {
+      "name": "isolation-gate",
+      "exit_status": 1,
+      "expected_exit_status": 1,
+      "package_seconds": 0.077,
+      "interleaved_complete_packets": 0,
+      "interleaved_expected_for_future_gate": 2,
+      "controls_passed": [
+        "in_order",
+        "within_packet_reorder",
+        "duplicate_fragment",
+        "missing_fragment_then_complete_packet"
+      ],
+      "raw_sha256": "d49c246cd4241893ad5afb86eb0c8b27bd9678f05aee4c7ef199fffc7d473b36",
+      "output_file": "isolation-gate.txt"
+    }
+  ],
+  "limitations": [
+    "No implementation, queue-size, negotiation, dependency or production change.",
+    "Diagnostic PASS validates the fixture; explicit isolation gate FAIL records absent interleaved packet support.",
+    "Official Hysteria implementation only; no inference about Shadowrocket receive implementation.",
+    "MTU/queue/accounting findings remain source analysis and planned experiments, not runtime reproductions.",
+    "15:10:09\u201315:10:21 UTC includes container/compiler overhead; exclude this CPU window from release observation."
+  ]
+}

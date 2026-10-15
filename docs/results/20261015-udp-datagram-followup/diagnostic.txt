@@ -1,0 +1,15 @@
+=== RUN   TestDefragInterleavingDiagnostic
+=== RUN   TestDefragInterleavingDiagnostic/in_order
+=== RUN   TestDefragInterleavingDiagnostic/within_packet_reorder
+=== RUN   TestDefragInterleavingDiagnostic/duplicate_fragment
+=== RUN   TestDefragInterleavingDiagnostic/interleaved_complete_packets
+    interleaving_diagnostic_test.go:48: all four fragments delivered as A0,B0,A1,B1; complete_packets=0 expected_for_reorder_isolation=2
+=== RUN   TestDefragInterleavingDiagnostic/missing_fragment_then_complete_packet
+--- PASS: TestDefragInterleavingDiagnostic (0.00s)
+    --- PASS: TestDefragInterleavingDiagnostic/in_order (0.00s)
+    --- PASS: TestDefragInterleavingDiagnostic/within_packet_reorder (0.00s)
+    --- PASS: TestDefragInterleavingDiagnostic/duplicate_fragment (0.00s)
+    --- PASS: TestDefragInterleavingDiagnostic/interleaved_complete_packets (0.00s)
+    --- PASS: TestDefragInterleavingDiagnostic/missing_fragment_then_complete_packet (0.00s)
+PASS
+ok  	github.com/apernet/hysteria/core/v2/internal/frag	0.004s
