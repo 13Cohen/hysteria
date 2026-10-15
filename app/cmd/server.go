@@ -235,6 +235,8 @@ type serverConfigTrafficStats struct {
 }
 
 type serverConfigQUICEvidence struct {
+	PacketEvidence          bool          `mapstructure:"packetEvidence"`
+	UDPEvidence             bool          `mapstructure:"udpEvidence"`
 	Enabled                 bool          `mapstructure:"enabled"`
 	Interval                time.Duration `mapstructure:"interval"`
 	MaxConnections          int           `mapstructure:"maxConnections"`
@@ -244,7 +246,7 @@ type serverConfigQUICEvidence struct {
 }
 
 func (c *serverConfig) fillQUICEvidence(hyConfig *server.Config) error {
-	hyConfig.QUICEvidenceConfig = server.QUICEvidenceConfig{Enabled: c.QUICEvidence.Enabled,
+	hyConfig.QUICEvidenceConfig = server.QUICEvidenceConfig{Enabled: c.QUICEvidence.Enabled, PacketEvidence: c.QUICEvidence.PacketEvidence, UDPEvidence: c.QUICEvidence.UDPEvidence,
 		Interval: c.QUICEvidence.Interval, MaxConnections: c.QUICEvidence.MaxConnections, StreamEvidence: c.QUICEvidence.StreamEvidence, MaxStreams: c.QUICEvidence.MaxStreams, MaxStreamsPerConnection: c.QUICEvidence.MaxStreamsPerConnection}
 	if c.QUICEvidence.Enabled {
 		hyConfig.QUICEvidenceLogger = &serverLogger{}

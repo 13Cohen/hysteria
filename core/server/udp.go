@@ -36,6 +36,7 @@ type udpSessionEntry struct {
 	D            *frag.Defragger
 	Last         *utils.AtomicTime
 	IO           udpIO
+	Evidence     *udpEvidence
 
 	DialFunc func(addr string, firstMsgData []byte) (conn UDPConn, actualAddr string, err error)
 	ExitFunc func(err error)
@@ -51,10 +52,11 @@ func newUDPSessionEntry(
 	exitFunc func(error),
 ) (e *udpSessionEntry) {
 	e = &udpSessionEntry{
-		ID:   id,
-		D:    &frag.Defragger{},
-		Last: utils.NewAtomicTime(time.Now()),
-		IO:   io,
+		ID:       id,
+		D:        &frag.Defragger{},
+		Last:     utils.NewAtomicTime(time.Now()),
+		IO:       io,
+		Evidence: evidenceForUDP(io),
 
 		DialFunc: dialFunc,
 		ExitFunc: exitFunc,
@@ -93,11 +95,16 @@ func (e *udpSessionEntry) Feed(msg *protocol.UDPMessage) (int, error) {
 	e.Last.Set(time.Now())
 	dfMsg := e.D.Feed(msg)
 	if dfMsg == nil {
+		if e.Evidence != nil {
+			e.Evidence.defragPending.Add(1)
+		}
 		return 0, nil
 	}
 
 	if e.conn == nil {
+		op := e.Evidence.begin(udpPhaseInit, len(dfMsg.Data))
 		err := e.initConn(dfMsg)
+		op.complete(0, err)
 		if err != nil {
 			return 0, err
 		}
@@ -108,7 +115,19 @@ func (e *udpSessionEntry) Feed(msg *protocol.UDPMessage) (int, error) {
 		addr = e.OverrideAddr
 	}
 
-	return e.conn.WriteTo(dfMsg.Data, addr)
+	op := e.Evidence.begin(udpPhaseTargetWrite, len(dfMsg.Data))
+	n, err := e.conn.WriteTo(dfMsg.Data, addr)
+	op.complete(n, err)
+	if u := e.Evidence; u != nil {
+		u.targetWriteCalls.Add(1)
+		if n > 0 {
+			u.targetWrittenBytes.Add(uint64(n))
+		}
+		if err != nil {
+			u.targetWriteErrors.Add(1)
+		}
+	}
+	return n, err
 }
 
 // initConn initializes the UDP connection of the session.
@@ -154,6 +173,15 @@ func (e *udpSessionEntry) receiveLoop() {
 	msgBuf := make([]byte, protocol.MaxUDPSize)
 	for {
 		udpN, rAddr, err := e.conn.ReadFrom(udpBuf)
+		if u := e.Evidence; u != nil {
+			if udpN > 0 {
+				u.targetReadDatagrams.Add(1)
+				u.targetReadBytes.Add(uint64(udpN))
+			}
+			if err != nil {
+				u.targetReadErrors.Add(1)
+			}
+		}
 		if err != nil {
 			e.CloseWithErr(err)
 			return
@@ -190,10 +218,17 @@ func sendMessageAutoFrag(io udpIO, buf []byte, msg *protocol.UDPMessage) error {
 	err := io.SendMessage(buf, msg)
 	var errTooLarge *quic.DatagramTooLargeError
 	if errors.As(err, &errTooLarge) {
+		u := evidenceForUDP(io)
+		if u != nil {
+			u.fragmentedMessages.Add(1)
+		}
 		// Message too large, try fragmentation
 		msg.PacketID = uint16(rand.Intn(0xFFFF)) + 1
 		fMsgs := frag.FragUDPMessage(msg, int(errTooLarge.MaxDatagramPayloadSize))
 		for _, fMsg := range fMsgs {
+			if u != nil {
+				u.fragmentsAttempted.Add(1)
+			}
 			err := io.SendMessage(buf, &fMsg)
 			if err != nil {
 				return err
@@ -318,7 +353,9 @@ func (m *udpSessionManager) feed(msg *protocol.UDPMessage) {
 	// Feed the message to the session
 	// Feed (send) errors are ignored for now,
 	// as some are temporary (e.g. invalid address)
-	_, _ = entry.Feed(msg)
+	op := entry.Evidence.begin(udpPhaseFeed, len(msg.Data))
+	n, err := entry.Feed(msg)
+	op.complete(n, err)
 }
 
 func (m *udpSessionManager) Count() int {

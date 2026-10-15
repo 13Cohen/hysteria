@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -165,7 +166,6 @@ func (h *h3sHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// Set authenticated flag
 			h.authenticated = true
 			h.authID = id
-			h.evidence.authenticate(h.conn.Context(), h.connID)
 			if h.config.IgnoreClientBandwidth {
 				// Ignore client bandwidth, always use BBR
 				congestion.UseBBR(h.conn)
@@ -184,6 +184,7 @@ func (h *h3sHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					congestion.UseBBR(h.conn)
 				}
 			}
+			h.evidence.authenticate(h.conn.Context(), h.connID, actualTx)
 			// Auth OK, send response
 			protocol.AuthResponseToHeader(w.Header(), protocol.AuthResponse{
 				UDPEnabled: !h.config.DisableUDP,
@@ -204,7 +205,7 @@ func (h *h3sHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if !h.config.DisableUDP {
 				go func() {
 					sm := newUDPSessionManager(
-						&udpIOImpl{h.conn, id, h.config.TrafficLogger, h.config.RequestHook, h.config.Outbound},
+						&udpIOImpl{h.conn, id, h.config.TrafficLogger, h.config.RequestHook, h.config.Outbound, h.evidence.traceUDP(h.conn.Context())},
 						&udpEventLoggerImpl{h.conn, id, h.config.EventLogger},
 						h.config.UDPIdleTimeout)
 					h.udpSM = sm
@@ -346,6 +347,7 @@ type udpIOImpl struct {
 	TrafficLogger TrafficLogger
 	RequestHook   RequestHook
 	Outbound      Outbound
+	Evidence      *udpEvidence
 }
 
 func (io *udpIOImpl) ReceiveMessage() (*protocol.UDPMessage, error) {
@@ -355,13 +357,28 @@ func (io *udpIOImpl) ReceiveMessage() (*protocol.UDPMessage, error) {
 			// Connection error, this will stop the session manager
 			return nil, err
 		}
+		if io.Evidence != nil {
+			io.Evidence.receivedDatagrams.Add(1)
+		}
 		udpMsg, err := protocol.ParseUDPMessage(msg)
 		if err != nil {
+			if io.Evidence != nil {
+				io.Evidence.parseErrors.Add(1)
+			}
 			// Invalid message, this is fine - just wait for the next
 			continue
 		}
+		if io.Evidence != nil {
+			io.Evidence.receivedPayloadBytes.Add(uint64(len(udpMsg.Data)))
+		}
 		if io.TrafficLogger != nil {
+			op := io.Evidence.begin(udpPhaseReceiveAccounting, len(udpMsg.Data))
 			ok := io.TrafficLogger.LogTraffic(io.AuthID, uint64(len(udpMsg.Data)), 0)
+			var evidenceErr error
+			if !ok {
+				evidenceErr = errDisconnect
+			}
+			op.complete(0, evidenceErr)
 			if !ok {
 				// TrafficLogger requested to disconnect the client
 				_ = io.Conn.CloseWithError(closeErrCodeTrafficLimitReached, "")
@@ -373,8 +390,17 @@ func (io *udpIOImpl) ReceiveMessage() (*protocol.UDPMessage, error) {
 }
 
 func (io *udpIOImpl) SendMessage(buf []byte, msg *protocol.UDPMessage) error {
+	if io.Evidence != nil {
+		io.Evidence.sendAttempts.Add(1)
+	}
 	if io.TrafficLogger != nil {
+		op := io.Evidence.begin(udpPhaseSendAccounting, len(msg.Data))
 		ok := io.TrafficLogger.LogTraffic(io.AuthID, 0, uint64(len(msg.Data)))
+		var evidenceErr error
+		if !ok {
+			evidenceErr = errDisconnect
+		}
+		op.complete(0, evidenceErr)
 		if !ok {
 			// TrafficLogger requested to disconnect the client
 			_ = io.Conn.CloseWithError(closeErrCodeTrafficLimitReached, "")
@@ -383,10 +409,33 @@ func (io *udpIOImpl) SendMessage(buf []byte, msg *protocol.UDPMessage) error {
 	}
 	msgN := msg.Serialize(buf)
 	if msgN < 0 {
+		if io.Evidence != nil {
+			io.Evidence.serializeDrops.Add(1)
+		}
 		// Message larger than buffer, silent drop
 		return nil
 	}
-	return io.Conn.SendDatagram(buf[:msgN])
+	op := io.Evidence.begin(udpPhaseSendDatagram, len(msg.Data))
+	err := io.Conn.SendDatagram(buf[:msgN])
+	written := 0
+	if err == nil {
+		written = len(msg.Data)
+	}
+	op.complete(written, err)
+	if u := io.Evidence; u != nil {
+		if err == nil {
+			u.enqueuedDatagrams.Add(1)
+			u.enqueuedPayloadBytes.Add(uint64(len(msg.Data)))
+		} else {
+			var tooLarge *quic.DatagramTooLargeError
+			if errors.As(err, &tooLarge) {
+				u.sendTooLarge.Add(1)
+			} else {
+				u.sendErrors.Add(1)
+			}
+		}
+	}
+	return err
 }
 
 func (io *udpIOImpl) Hook(data []byte, reqAddr *string) error {

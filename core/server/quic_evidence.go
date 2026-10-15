@@ -18,6 +18,8 @@ import (
 // A slot includes an unauthenticated handshake. Hitting the cap only skips tracing.
 type QUICEvidenceConfig struct {
 	Enabled                 bool
+	PacketEvidence          bool
+	UDPEvidence             bool
 	Interval                time.Duration
 	MaxConnections          int
 	StreamEvidence          bool
@@ -37,6 +39,11 @@ type QUICEvidenceLogger interface {
 // Counters start at authentication. Gauges are independently sampled atomics;
 // they do not form a transactionally consistent transport-state snapshot.
 type QUICEvidence struct {
+	UDP                       *UDPEvidence             `json:"udp,omitempty"`
+	UDPOperation              *UDPOperationEvidence    `json:"udp_operation,omitempty"`
+	PacketEvidence            bool                     `json:"packet_evidence"`
+	CongestionMode            string                   `json:"congestion_mode"`
+	NegotiatedServerTx        uint64                   `json:"negotiated_server_tx_bytes_per_second"`
 	Operation                 *StreamOperationEvidence `json:"operation,omitempty"`
 	Stream                    *StreamEvidence          `json:"stream,omitempty"`
 	Application               *ApplicationEvidence     `json:"application,omitempty"`
@@ -46,10 +53,10 @@ type QUICEvidence struct {
 	Session                   string                   `json:"session"`
 	StatsConnection           uint32                   `json:"stats_connection"`
 	AuthenticatedAgeMS        int64                    `json:"authenticated_age_ms"`
-	ReceivedPackets           uint64                   `json:"received_packets"`
-	ReceivedBytes             uint64                   `json:"received_bytes"`
-	SentPackets               uint64                   `json:"sent_packets"`
-	SentBytes                 uint64                   `json:"sent_bytes"`
+	ReceivedPackets           *uint64                  `json:"received_packets"`
+	ReceivedBytes             *uint64                  `json:"received_bytes"`
+	SentPackets               *uint64                  `json:"sent_packets"`
+	SentBytes                 *uint64                  `json:"sent_bytes"`
 	AcknowledgedPackets       uint64                   `json:"acknowledged_packets"`
 	LostPackets               uint64                   `json:"lost_packets"`
 	TimeThresholdLosses       uint64                   `json:"time_threshold_losses"`
@@ -64,8 +71,8 @@ type QUICEvidence struct {
 	BytesInFlight             int64                    `json:"bytes_in_flight"`
 	PacketsInFlight           int64                    `json:"packets_in_flight"`
 	MTU                       int64                    `json:"mtu"`
-	LastReceivedAgeMS         int64                    `json:"last_received_age_ms"`
-	LastSentAgeMS             int64                    `json:"last_sent_age_ms"`
+	LastReceivedAgeMS         *int64                   `json:"last_received_age_ms"`
+	LastSentAgeMS             *int64                   `json:"last_sent_age_ms"`
 	LastACKAgeMS              int64                    `json:"last_ack_age_ms"`
 	LastMetricsAgeMS          int64                    `json:"last_metrics_age_ms"`
 	CloseClass                string                   `json:"close_class,omitempty"`
@@ -85,12 +92,15 @@ type evidenceClose struct {
 }
 
 type evidenceState struct {
-	created       time.Time
-	authenticated atomic.Bool
+	created        time.Time
+	packetEvidence bool
+	udp            *udpEvidence
+	authenticated  atomic.Bool
 	// Written before authenticated.Store(true), then immutable.
 	authAt             time.Time
 	session            string
 	statsConnection    uint32
+	negotiatedTx       uint64
 	receivedPackets    atomic.Uint64
 	receivedBytes      atomic.Uint64
 	sentPackets        atomic.Uint64
@@ -141,8 +151,8 @@ type quicEvidence struct {
 
 func (c *QUICEvidenceConfig) validate(logger QUICEvidenceLogger) error {
 	if !c.Enabled {
-		if c.StreamEvidence {
-			return errors.New("streamEvidence requires quicEvidence enabled")
+		if c.StreamEvidence || c.UDPEvidence || c.PacketEvidence {
+			return errors.New("application/packet evidence requires quicEvidence enabled")
 		}
 		return nil
 	}
@@ -204,26 +214,20 @@ func (m *quicEvidence) tracer(ctx context.Context, _ logging.Perspective, _ quic
 		m.untracked.Add(1)
 		return nil
 	}
-	s := &evidenceState{created: time.Now()}
+	s := &evidenceState{created: time.Now(), packetEvidence: m.config.PacketEvidence}
+	if m.config.UDPEvidence {
+		s.udp = &udpEvidence{manager: m, connection: s}
+		for i := range s.udp.operations {
+			s.udp.operations[i].owner = s.udp
+		}
+	}
 	s.lastReceived.Store(-1)
 	s.lastSent.Store(-1)
 	s.lastACK.Store(-1)
 	s.lastMetrics.Store(-1)
 	m.states[id] = s
 	m.mu.Unlock()
-	return &logging.ConnectionTracer{
-		ReceivedLongHeaderPacket: func(_ *logging.ExtendedHeader, size logging.ByteCount, _ logging.ECN, _ []logging.Frame) {
-			s.received(size)
-		},
-		ReceivedShortHeaderPacket: func(_ *logging.ShortHeader, size logging.ByteCount, _ logging.ECN, _ []logging.Frame) {
-			s.received(size)
-		},
-		SentLongHeaderPacket: func(_ *logging.ExtendedHeader, size logging.ByteCount, _ logging.ECN, _ *logging.AckFrame, _ []logging.Frame) {
-			s.sent(size)
-		},
-		SentShortHeaderPacket: func(_ *logging.ShortHeader, size logging.ByteCount, _ logging.ECN, _ *logging.AckFrame, _ []logging.Frame) {
-			s.sent(size)
-		},
+	t := &logging.ConnectionTracer{
 		AcknowledgedPacket: func(_ logging.EncryptionLevel, _ logging.PacketNumber) {
 			if !s.authenticated.Load() {
 				return
@@ -287,6 +291,21 @@ func (m *quicEvidence) tracer(ctx context.Context, _ logging.Perspective, _ quic
 			}
 		},
 	}
+	if m.config.PacketEvidence {
+		t.ReceivedLongHeaderPacket = func(_ *logging.ExtendedHeader, size logging.ByteCount, _ logging.ECN, _ []logging.Frame) {
+			s.received(size)
+		}
+		t.ReceivedShortHeaderPacket = func(_ *logging.ShortHeader, size logging.ByteCount, _ logging.ECN, _ []logging.Frame) {
+			s.received(size)
+		}
+		t.SentLongHeaderPacket = func(_ *logging.ExtendedHeader, size logging.ByteCount, _ logging.ECN, _ *logging.AckFrame, _ []logging.Frame) {
+			s.sent(size)
+		}
+		t.SentShortHeaderPacket = func(_ *logging.ShortHeader, size logging.ByteCount, _ logging.ECN, _ *logging.AckFrame, _ []logging.Frame) {
+			s.sent(size)
+		}
+	}
+	return t
 }
 
 func (s *evidenceState) received(size logging.ByteCount) {
@@ -311,7 +330,7 @@ func (s *evidenceState) sent(size logging.ByteCount) {
 	s.lastSent.Store(time.Since(s.created).Nanoseconds())
 }
 
-func (m *quicEvidence) authenticate(ctx context.Context, statsConnection uint32) {
+func (m *quicEvidence) authenticate(ctx context.Context, statsConnection uint32, negotiatedTx ...uint64) {
 	if m == nil {
 		return
 	}
@@ -328,6 +347,9 @@ func (m *quicEvidence) authenticate(ctx context.Context, statsConnection uint32)
 	s.authAt = time.Now()
 	s.session = fmt.Sprintf("%s-%x", m.prefix, uint64(id))
 	s.statsConnection = statsConnection
+	if len(negotiatedTx) > 0 {
+		s.negotiatedTx = negotiatedTx[0]
+	}
 	s.authenticated.Store(true)
 	m.mu.Unlock()
 	m.enqueue(m.connectionSnapshot(s, "authenticated", time.Now()))
@@ -341,15 +363,27 @@ func evidenceAge(now time.Time, created time.Time, ns int64) int64 {
 }
 
 func (s *evidenceState) snapshot(event string, now time.Time) QUICEvidence {
-	e := QUICEvidence{Schema: 1, Event: event, Time: now.UTC(), Session: s.session, StatsConnection: s.statsConnection,
-		AuthenticatedAgeMS: max(0, now.Sub(s.authAt).Milliseconds()),
-		ReceivedPackets:    s.receivedPackets.Load(), ReceivedBytes: s.receivedBytes.Load(), SentPackets: s.sentPackets.Load(), SentBytes: s.sentBytes.Load(),
+	e := QUICEvidence{Schema: 2, PacketEvidence: s.packetEvidence, Event: event, Time: now.UTC(), Session: s.session, StatsConnection: s.statsConnection,
+		AuthenticatedAgeMS:  max(0, now.Sub(s.authAt).Milliseconds()),
 		AcknowledgedPackets: s.acked.Load(), LostPackets: s.lost.Load(), TimeThresholdLosses: s.lostTime.Load(), ReorderingThresholdLosses: s.lostReorder.Load(),
 		PTOCount: s.pto.Load(), PTOMax: s.ptoMax.Load(), PTOPositiveUpdates: s.ptoPositiveUpdates.Load(),
 		LatestRTTUS: s.latestRTT.Load(), SmoothedRTTUS: s.smoothedRTT.Load(), MinRTTUS: s.minRTT.Load(),
 		CongestionWindow: s.cwnd.Load(), BytesInFlight: s.inFlight.Load(), PacketsInFlight: s.packetsInFlight.Load(), MTU: s.mtu.Load(),
-		LastReceivedAgeMS: evidenceAge(now, s.created, s.lastReceived.Load()), LastSentAgeMS: evidenceAge(now, s.created, s.lastSent.Load()),
 		LastACKAgeMS: evidenceAge(now, s.created, s.lastACK.Load()), LastMetricsAgeMS: evidenceAge(now, s.created, s.lastMetrics.Load())}
+	e.CongestionMode = "bbr"
+	e.NegotiatedServerTx = s.negotiatedTx
+	if s.negotiatedTx > 0 {
+		e.CongestionMode = "brutal"
+	}
+	if s.packetEvidence {
+		rx, rb, tx, tb := s.receivedPackets.Load(), s.receivedBytes.Load(), s.sentPackets.Load(), s.sentBytes.Load()
+		ra, ta := evidenceAge(now, s.created, s.lastReceived.Load()), evidenceAge(now, s.created, s.lastSent.Load())
+		e.ReceivedPackets, e.ReceivedBytes, e.SentPackets, e.SentBytes = &rx, &rb, &tx, &tb
+		e.LastReceivedAgeMS, e.LastSentAgeMS = &ra, &ta
+	}
+	if s.udp != nil {
+		e.UDP = s.udp.snapshot(now)
+	}
 	if close := s.close.Load(); close != nil {
 		e.CloseClass = close.class
 		e.CloseCode = close.code

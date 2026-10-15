@@ -29,7 +29,7 @@ func TestQUICEvidenceAuthenticatedTransfer(t *testing.T) {
 	auth.EXPECT().Authenticate(mock.Anything, "private-good-password", uint64(0)).Return(true, "private-auth-identity").Once()
 	capture := &evidenceCapture{events: make(chan server.QUICEvidence, 64)}
 	s, err := server.NewServer(&server.Config{TLSConfig: serverTLSConfig(), Conn: udpConn,
-		Authenticator: auth, QUICEvidenceConfig: server.QUICEvidenceConfig{Enabled: true, Interval: time.Second}, QUICEvidenceLogger: capture})
+		Authenticator: auth, QUICEvidenceConfig: server.QUICEvidenceConfig{Enabled: true, PacketEvidence: true, Interval: time.Second}, QUICEvidenceLogger: capture})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestQUICEvidenceAuthenticatedTransfer(t *testing.T) {
 			} else if e.Session != session {
 				t.Fatal("one connection changed session ID")
 			}
-			observed = e.Event == "sample" && e.ReceivedPackets > 0 && e.SentPackets > 0 && e.AcknowledgedPackets > 0 && e.LastMetricsAgeMS >= 0 && e.LatestRTTUS > 0 && e.CongestionWindow > 0
+			observed = e.Event == "sample" && e.ReceivedPackets != nil && *e.ReceivedPackets > 0 && e.SentPackets != nil && *e.SentPackets > 0 && e.AcknowledgedPackets > 0 && e.LastMetricsAgeMS >= 0 && e.LatestRTTUS > 0 && e.CongestionWindow > 0
 		case <-timer.C:
 			t.Fatal("real QUIC traffic did not produce authenticated ACK/RTT/window evidence")
 		}

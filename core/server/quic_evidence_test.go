@@ -26,7 +26,7 @@ func testEvidence(t testing.TB, maxConnections int, logger QUICEvidenceLogger) *
 	if logger == nil {
 		logger = evidenceLoggerFunc(func(QUICEvidence) {})
 	}
-	m, err := newQUICEvidence(QUICEvidenceConfig{Enabled: true, MaxConnections: maxConnections}, logger)
+	m, err := newQUICEvidence(QUICEvidenceConfig{Enabled: true, PacketEvidence: true, MaxConnections: maxConnections}, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestQUICEvidenceAuthenticationGateAndPrivacy(t *testing.T) {
 	if first.Event != "authenticated" || first.StatsConnection != 77 || first.Session == "" || len(m.events) != 0 {
 		t.Fatalf("bad auth event: %+v", first)
 	}
-	if first.LastReceivedAgeMS != -1 || first.ReceivedPackets != 0 {
+	if *first.LastReceivedAgeMS != -1 || *first.ReceivedPackets != 0 {
 		t.Fatal("missing observation must not look like fresh progress")
 	}
 	if first.LastMetricsAgeMS != -1 || first.LatestRTTUS != 0 || first.CongestionWindow != 0 || first.MTU != 0 {
@@ -128,7 +128,7 @@ func TestQUICEvidenceMetricsAndClosure(t *testing.T) {
 	tracer.ClosedConnection(&quic.IdleTimeoutError{})
 	tracer.Close()
 	e := <-m.events
-	if e.ReceivedPackets != 2 || e.ReceivedBytes != 1300 || e.SentPackets != 1 || e.SentBytes != 1250 {
+	if *e.ReceivedPackets != 2 || *e.ReceivedBytes != 1300 || *e.SentPackets != 1 || *e.SentBytes != 1250 {
 		t.Fatalf("bad packet counters: %+v", e)
 	}
 	if e.AcknowledgedPackets != 1 || e.LostPackets != 2 || e.TimeThresholdLosses != 1 || e.ReorderingThresholdLosses != 1 {
@@ -140,7 +140,7 @@ func TestQUICEvidenceMetricsAndClosure(t *testing.T) {
 	if e.LatestRTTUS != 40000 || e.SmoothedRTTUS != 40000 || e.MinRTTUS != 40000 || e.CongestionWindow != 65536 || e.BytesInFlight != 2500 || e.PacketsInFlight != 2 || e.MTU != 1400 {
 		t.Fatalf("bad gauges: %+v", e)
 	}
-	if e.CloseClass != "idle_timeout" || e.LastReceivedAgeMS < 0 || e.LastACKAgeMS < 0 || e.LastMetricsAgeMS < 0 {
+	if e.CloseClass != "idle_timeout" || *e.LastReceivedAgeMS < 0 || e.LastACKAgeMS < 0 || e.LastMetricsAgeMS < 0 {
 		t.Fatalf("bad freshness/close: %+v", e)
 	}
 	if len(m.states) != 0 {
@@ -322,5 +322,28 @@ func BenchmarkQUICEvidenceCallbacks(b *testing.B) {
 				tracer.AcknowledgedPacket(logging.Encryption1RTT, 1)
 			}
 		})
+	}
+}
+
+func TestQUICEvidencePacketOptIn(t *testing.T) {
+	m, err := newQUICEvidence(QUICEvidenceConfig{Enabled: true}, evidenceLoggerFunc(func(QUICEvidence) {}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := evidenceContext(99)
+	tr := m.tracer(ctx, logging.PerspectiveServer, quic.ConnectionID{})
+	if tr.ReceivedShortHeaderPacket != nil || tr.ReceivedLongHeaderPacket != nil || tr.SentShortHeaderPacket != nil || tr.SentLongHeaderPacket != nil {
+		t.Fatal("packet metadata callbacks enabled by default")
+	}
+	m.authenticate(ctx, 99)
+	e := <-m.events
+	if e.PacketEvidence || e.ReceivedPackets != nil || e.ReceivedBytes != nil || e.SentPackets != nil || e.SentBytes != nil || e.LastReceivedAgeMS != nil || e.LastSentAgeMS != nil {
+		t.Fatal("unobserved packet metrics must be null")
+	}
+	tr.AcknowledgedPacket(logging.Encryption1RTT, 1)
+	tr.Close()
+	e = <-m.events
+	if e.AcknowledgedPackets != 1 || e.LastACKAgeMS < 0 {
+		t.Fatal("cheap mode lost ACK progress")
 	}
 }

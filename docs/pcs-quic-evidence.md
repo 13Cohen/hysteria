@@ -125,3 +125,59 @@ single-pair small-only references, which are exploratory, not acceptance gates.
 TCP copy evidence does not cover UDP relay or QUIC DATAGRAM queue overflow.
 Traffic API accounting precedes successful writes and may count an oversized
 UDP attempt again on fragmented retry; it is not delivered application bytes.
+
+### Schema 2 candidate: packet opt-in and UDP application evidence
+
+`packetEvidence` defaults to false even when aggregate evidence is enabled. The
+four packet-header/frame callbacks remain nil in this mode: the pinned quic-go
+source guards logging frame and ACK metadata construction on those callbacks.
+The six packet counts/bytes/receive-send ages serialize as `null`, accompanied by
+`packet_evidence:false`; they must never be interpreted as zero traffic. ACK,
+loss, PTO updates, RTT/cwnd, MTU and close callbacks remain enabled. Full packet
+evidence remains explicitly available, but is not part of the low-cost default.
+The previous full-packet performance gate failure remains recorded above.
+
+`udpEvidence:true` adds fixed per-authenticated-connection counters and eight
+operation slots, independent of `packetEvidence`. Counters retain no address,
+wire session ID, payload or error text. No additional UDP session registry exists.
+Slots observe `receive_accounting`, `send_accounting`, `send_datagram`, `feed`,
+`init`, and `target_write`; receive/read waiting is not classified as a stall.
+`feed` encloses defragmentation, initialization and the actual target WriteTo;
+its slot overlaps an init/write child slot, so slots must not be summed as
+independent users or independent bytes. In-flight snapshots are best effort.
+Slots are released when their operation returns, with fixed state retained by
+existing blocked goroutines only; there is no new waiter goroutine. Saturation
+increments `untracked_operations_total` while byte/error counters remain active.
+
+The `udp` object counts received QUIC datagrams and parsed payload, actual target
+read/write bytes and errors, send attempts, successfully enqueued datagrams and
+payload bytes, too-large send errors, other send errors, serialization drops,
+fragmentation attempts, and incomplete defragmentation returns. `defrag_pending`
+is not a proven drop. `target_read_errors` can include ordinary close. Successful
+`SendDatagram` means queued, not delivered, and initial oversized attempts are
+excluded from enqueued bytes. Fragment counters describe retries, not unique
+original messages. `receive_queue_drops_observable:false` explicitly records the
+remaining pinned quic-go 128-frame user-space receive-queue overflow blind spot.
+Kernel UDP drop counters cannot close this gap. No queue sizes are changed.
+
+`udp_operation_slow_complete` reports only a phase that returns after at least
+one second, via the existing bounded/rate-limited emitter. Its `udp_operation`
+contains direction, phase, monotonic-derived UTC start, duration, requested bytes,
+actual written bytes and an error class. Accounting/init written bytes are zero;
+feed/target_write report WriteTo's actual result, and send_datagram reports queued
+payload bytes on success. All return and close semantics, including silent
+serialization drops and ignored temporary Feed errors, are preserved.
+
+Authenticated records include `congestion_mode` (`bbr` or `brutal`) and
+`negotiated_server_tx_bytes_per_second`; zero means BBR automatic congestion
+control, not zero bandwidth. These are fixed once after the existing selection.
+
+The next acceptance matrix records actual UTC bounds, separate server and
+harness CPU, and container cgroup CPU counters, quota, current/peak memory and
+limit before/after each run. cgroup memory peak is cumulative across the container,
+not a per-run reset peak. Docker daemon logging CPU lies outside that cgroup.
+TCP mixed runs retain the same 130 MiB/256-request denominator. An additional
+UDP matrix verifies 4096 echoes of 1000-byte payload (8,192,000 total payload
+bytes across both directions) through eight UDP sessions distributed over 1 or
+8 QUIC connections, three alternating pairs each. These loopback/quota-limited
+experiments bound instrumentation cost and do not predict Internet video bitrate.

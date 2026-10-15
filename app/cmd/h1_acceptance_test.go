@@ -26,6 +26,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -115,7 +117,7 @@ func TestH1AcceptanceServer(t *testing.T) {
 	if cfg.Capture {
 		evidenceLogger = capture
 	}
-	s, err := server.NewServer(&server.Config{Conn: udp, TLSConfig: server.TLSConfig{Certificates: []tls.Certificate{cert}}, Authenticator: h1Authenticator{}, TrafficLogger: trafficlogger.NewTrafficStatsServer("synthetic-management-only"), QUICConfig: server.QUICConfig{MaxIdleTimeout: time.Duration(cfg.IdleSeconds) * time.Second}, QUICEvidenceConfig: server.QUICEvidenceConfig{Enabled: cfg.Evidence, StreamEvidence: cfg.Evidence, Interval: time.Second}, QUICEvidenceLogger: evidenceLogger})
+	s, err := server.NewServer(&server.Config{Conn: udp, TLSConfig: server.TLSConfig{Certificates: []tls.Certificate{cert}}, Authenticator: h1Authenticator{}, TrafficLogger: trafficlogger.NewTrafficStatsServer("synthetic-management-only"), QUICConfig: server.QUICConfig{MaxIdleTimeout: time.Duration(cfg.IdleSeconds) * time.Second}, QUICEvidenceConfig: server.QUICEvidenceConfig{Enabled: cfg.Evidence, StreamEvidence: cfg.Evidence, UDPEvidence: cfg.Evidence, Interval: time.Second}, QUICEvidenceLogger: evidenceLogger})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -555,7 +557,45 @@ func TestH1EvidenceSecurityAndFaults(t *testing.T) {
 	})
 }
 
+type h1Cgroup struct {
+	CPUStat                   map[string]uint64
+	MemoryCurrent, MemoryPeak uint64
+	CPUQuota, MemoryLimit     string
+	Errors                    []string
+}
+
+func h1CgroupSnapshot() h1Cgroup {
+	out := h1Cgroup{CPUStat: map[string]uint64{}}
+	read := func(name string) string {
+		b, e := os.ReadFile("/sys/fs/cgroup/" + name)
+		if e != nil {
+			out.Errors = append(out.Errors, name)
+			return ""
+		}
+		return strings.TrimSpace(string(b))
+	}
+	for _, line := range strings.Split(read("cpu.stat"), "\n") {
+		v := strings.Fields(line)
+		if len(v) == 2 {
+			out.CPUStat[v[0]], _ = strconv.ParseUint(v[1], 10, 64)
+		}
+	}
+	out.MemoryCurrent, _ = strconv.ParseUint(read("memory.current"), 10, 64)
+	out.MemoryPeak, _ = strconv.ParseUint(read("memory.peak"), 10, 64)
+	out.CPUQuota = read("cpu.max")
+	out.MemoryLimit = read("memory.max")
+	return out
+}
+func h1HarnessCPU() float64 {
+	var u syscall.Rusage
+	_ = syscall.Getrusage(syscall.RUSAGE_SELF, &u)
+	return float64(u.Utime.Sec+u.Stime.Sec) + float64(u.Utime.Usec+u.Stime.Usec)/1e6
+}
+
 type h1PerformanceResult struct {
+	StartedAt, FinishedAt                                                                                         time.Time
+	CgroupBefore, CgroupAfter                                                                                     h1Cgroup
+	HarnessCPUSeconds                                                                                             float64
 	Workload                                                                                                      string
 	Connections, Pair                                                                                             int
 	Enabled                                                                                                       bool
@@ -588,6 +628,8 @@ func h1PerformanceRun(t *testing.T, ca h1CA, connections, pair int, enabled bool
 		}
 	}
 	before := w.metrics(t)
+	cgroupBefore := h1CgroupSnapshot()
+	harnessBefore := h1HarnessCPU()
 	start := time.Now()
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -645,7 +687,7 @@ func h1PerformanceRun(t *testing.T, ca h1CA, connections, pair int, enabled bool
 		workload = "small_only_reference"
 	}
 	mib := float64(bulkMiB + 2)
-	result := h1PerformanceResult{Workload: workload, Connections: connections, Pair: pair, Enabled: enabled, PayloadBytes: payload, SmallRequests: len(latencies), WallSeconds: wall, ServerCPUSeconds: after.CPUSeconds - before.CPUSeconds, MiBPerSecond: mib / wall, CPUSecondsPerMiB: (after.CPUSeconds - before.CPUSeconds) / mib, SmallP50MS: h1Percentile(latencies, .50), SmallP95MS: h1Percentile(latencies, .95), SmallP99MS: h1Percentile(latencies, .99), SmallMaxMS: h1Percentile(latencies, 1), PerConnectionSmallMaxMS: perConnection, AllocBytes: after.TotalAlloc - before.TotalAlloc, GCCount: after.NumGC - before.NumGC, GCPauseNS: after.PauseNS - before.PauseNS, LogBytes: after.LogBytes - before.LogBytes}
+	result := h1PerformanceResult{StartedAt: start.UTC(), FinishedAt: time.Now().UTC(), CgroupBefore: cgroupBefore, CgroupAfter: h1CgroupSnapshot(), HarnessCPUSeconds: h1HarnessCPU() - harnessBefore, Workload: workload, Connections: connections, Pair: pair, Enabled: enabled, PayloadBytes: payload, SmallRequests: len(latencies), WallSeconds: wall, ServerCPUSeconds: after.CPUSeconds - before.CPUSeconds, MiBPerSecond: mib / wall, CPUSecondsPerMiB: (after.CPUSeconds - before.CPUSeconds) / mib, SmallP50MS: h1Percentile(latencies, .50), SmallP95MS: h1Percentile(latencies, .95), SmallP99MS: h1Percentile(latencies, .99), SmallMaxMS: h1Percentile(latencies, 1), PerConnectionSmallMaxMS: perConnection, AllocBytes: after.TotalAlloc - before.TotalAlloc, GCCount: after.NumGC - before.NumGC, GCPauseNS: after.PauseNS - before.PauseNS, LogBytes: after.LogBytes - before.LogBytes}
 	body, _ := json.Marshal(result)
 	t.Logf("H1_PERFORMANCE_RESULT %s", body)
 	return result
@@ -683,6 +725,176 @@ func TestH1EvidencePerformance(t *testing.T) {
 		t.Logf("H1_GATE connections=%d pairs=3 small_requests_per_mode=768 throughput_ratio=%.6f server_cpu_per_byte_ratio=%.6f", connections, throughputRatio, cpuRatio)
 		if throughputRatio < .95 || cpuRatio > 1.20 {
 			t.Errorf("H1 release gate exceeded: connections=%d throughput_ratio=%.4f CPU_per_byte_ratio=%.4f; pause release and analyze", connections, throughputRatio, cpuRatio)
+		}
+	}
+}
+
+func h1UDPEcho(t *testing.T) string {
+	t.Helper()
+	conn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	go func() {
+		buf := make([]byte, 65536)
+		for {
+			n, addr, err := conn.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			_, _ = conn.WriteTo(buf[:n], addr)
+		}
+	}()
+	return conn.LocalAddr().String()
+}
+func h1UDPRoundTrip(c client.HyUDPConn, target string, payload []byte) error {
+	if err := c.Send(payload, target); err != nil {
+		return err
+	}
+	b, _, err := c.Receive()
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(b, payload) {
+		return fmt.Errorf("UDP payload mismatch")
+	}
+	return nil
+}
+func TestH1EvidenceUDP(t *testing.T) {
+	if os.Getenv("PCS_H1_ACCEPTANCE") != "1" {
+		t.Skip("opt-in isolated acceptance")
+	}
+	ca := h1Certificate(t)
+	w := h1StartWorker(t, ca, true, true, 8)
+	c, err := h1Client(w.ready.UDP, ca.roots, "pcs-h1.test", h1TestAuth, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	uc, err := c.UDP()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer uc.Close()
+	timer := time.AfterFunc(8*time.Second, func() { _ = c.Close() })
+	defer timer.Stop()
+	target := h1UDPEcho(t)
+	for _, size := range []int{1000, 8192} {
+		if err = h1UDPRoundTrip(uc, target, bytes.Repeat([]byte{0x5a}, size)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(1100 * time.Millisecond)
+	found := false
+	for _, e := range w.metrics(t).Evidence {
+		if e.UDP != nil && e.UDP.TargetWrittenBytes == 9192 && e.UDP.TargetReadBytes == 9192 && e.UDP.EnqueuedPayloadBytes == 9192 && e.UDP.FragmentedMessages > 0 && e.UDP.SendTooLarge > 0 && e.UDP.DefragPending > 0 {
+			found = true
+			if e.PacketEvidence || e.ReceivedPackets != nil || e.CongestionMode != "bbr" || e.NegotiatedServerTx != 0 {
+				t.Fatal("cheap-mode/auth coverage wrong")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("actual UDP/fragment counts absent or duplicate attempts counted as delivered")
+	}
+}
+func TestH1EvidenceUDPPerformance(t *testing.T) {
+	if os.Getenv("PCS_H1_ACCEPTANCE") != "1" {
+		t.Skip("opt-in isolated acceptance")
+	}
+	ca := h1Certificate(t)
+	target := h1UDPEcho(t)
+	for _, connections := range []int{1, 8} {
+		var wall, cpu [2]float64
+		for pair := 0; pair < 3; pair++ {
+			order := []bool{false, true}
+			if pair%2 == 1 {
+				order = []bool{true, false}
+			}
+			for _, enabled := range order {
+				w := h1StartWorker(t, ca, enabled, false, 30)
+				clients := make([]client.Client, connections)
+				for i := range clients {
+					c, err := h1Client(w.ready.UDP, ca.roots, "pcs-h1.test", h1TestAuth, 30)
+					if err != nil {
+						t.Fatal(err)
+					}
+					clients[i] = c
+				}
+				lanes := make([]client.HyUDPConn, 8)
+				for i := range lanes {
+					var err error
+					lanes[i], err = clients[i%connections].UDP()
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				before := w.metrics(t)
+				cb := h1CgroupSnapshot()
+				hc := h1HarnessCPU()
+				start := time.Now()
+				timer := time.AfterFunc(30*time.Second, func() {
+					for _, c := range clients {
+						_ = c.Close()
+					}
+				})
+				var wg sync.WaitGroup
+				errCh := make(chan error, 8)
+				var mu sync.Mutex
+				var latency []float64
+				for _, uc := range lanes {
+					wg.Add(1)
+					go func(uc client.HyUDPConn) {
+						defer wg.Done()
+						payload := bytes.Repeat([]byte{0x5a}, 1000)
+						for j := 0; j < 512; j++ {
+							at := time.Now()
+							if err := h1UDPRoundTrip(uc, target, payload); err != nil {
+								errCh <- err
+								return
+							}
+							ms := float64(time.Since(at)) / float64(time.Millisecond)
+							mu.Lock()
+							latency = append(latency, ms)
+							mu.Unlock()
+						}
+					}(uc)
+				}
+				wg.Wait()
+				elapsed := time.Since(start).Seconds()
+				timer.Stop()
+				close(errCh)
+				for err := range errCh {
+					if err != nil {
+						t.Fatal(err)
+					}
+				}
+				time.Sleep(100 * time.Millisecond)
+				after := w.metrics(t)
+				payload := uint64(4096 * 1000 * 2)
+				mib := float64(payload) / (1 << 20)
+				result := h1PerformanceResult{Workload: "udp_echo_8_sessions", Connections: connections, Pair: pair, Enabled: enabled, StartedAt: start.UTC(), FinishedAt: time.Now().UTC(), CgroupBefore: cb, CgroupAfter: h1CgroupSnapshot(), HarnessCPUSeconds: h1HarnessCPU() - hc, PayloadBytes: payload, SmallRequests: len(latency), WallSeconds: elapsed, ServerCPUSeconds: after.CPUSeconds - before.CPUSeconds, MiBPerSecond: mib / elapsed, CPUSecondsPerMiB: (after.CPUSeconds - before.CPUSeconds) / mib, SmallP50MS: h1Percentile(latency, .5), SmallP95MS: h1Percentile(latency, .95), SmallP99MS: h1Percentile(latency, .99), SmallMaxMS: h1Percentile(latency, 1), AllocBytes: after.TotalAlloc - before.TotalAlloc, GCCount: after.NumGC - before.NumGC, GCPauseNS: after.PauseNS - before.PauseNS, LogBytes: after.LogBytes - before.LogBytes}
+				b, _ := json.Marshal(result)
+				t.Logf("H1_PERFORMANCE_RESULT %s", b)
+				index := 0
+				if enabled {
+					index = 1
+				}
+				wall[index] += elapsed
+				cpu[index] += result.ServerCPUSeconds
+				for _, uc := range lanes {
+					_ = uc.Close()
+				}
+				for _, c := range clients {
+					_ = c.Close()
+				}
+				w.close()
+			}
+		}
+		t.Logf("H1_UDP_GATE connections=%d pairs=3 throughput_ratio=%.6f server_cpu_per_byte_ratio=%.6f", connections, wall[0]/wall[1], cpu[1]/cpu[0])
+		if wall[0]/wall[1] < .95 || cpu[1]/cpu[0] > 1.20 {
+			t.Errorf("UDP release gate exceeded: connections=%d", connections)
 		}
 	}
 }
