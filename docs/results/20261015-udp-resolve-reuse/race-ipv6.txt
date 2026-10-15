@@ -1,0 +1,49 @@
+=== RUN   TestUDPResolveReuseLifetimeAndOwnership
+--- PASS: TestUDPResolveReuseLifetimeAndOwnership (0.00s)
+=== RUN   TestUDPResolveReuseTargetsAndBound
+--- PASS: TestUDPResolveReuseTargetsAndBound (0.00s)
+=== RUN   TestUDPResolveReuseFailuresAreNotCached
+=== RUN   TestUDPResolveReuseFailuresAreNotCached/error
+=== RUN   TestUDPResolveReuseFailuresAreNotCached/empty
+=== RUN   TestUDPResolveReuseFailuresAreNotCached/partial-error
+--- PASS: TestUDPResolveReuseFailuresAreNotCached (0.00s)
+    --- PASS: TestUDPResolveReuseFailuresAreNotCached/error (0.00s)
+    --- PASS: TestUDPResolveReuseFailuresAreNotCached/empty (0.00s)
+    --- PASS: TestUDPResolveReuseFailuresAreNotCached/partial-error (0.00s)
+=== RUN   TestUDPResolveReuseFailedWriteDoesNotEvictReplacement
+--- PASS: TestUDPResolveReuseFailedWriteDoesNotEvictReplacement (0.00s)
+=== RUN   TestUDPResolveReuseLookupDoesNotLockHitsOrClose
+--- PASS: TestUDPResolveReuseLookupDoesNotLockHitsOrClose (0.00s)
+=== RUN   TestUDPResolveReuseConcurrentAccess
+--- PASS: TestUDPResolveReuseConcurrentAccess (0.01s)
+=== RUN   TestUDPResolveLiteralClassification
+--- PASS: TestUDPResolveLiteralClassification (0.00s)
+=== RUN   TestUDPResolveReuseLoopbackDNS
+=== RUN   TestUDPResolveReuseLoopbackDNS/reuse=false
+    udp_resolve_loopback_test.go:103: reuse=false packets=16 intact=16 DNS_queries=32 A=16 AAAA=16 fixture_DNS_delay_ms=5 elapsed_ms=186.095
+=== RUN   TestUDPResolveReuseLoopbackDNS/reuse=true
+    udp_resolve_loopback_test.go:103: reuse=true packets=16 intact=16 DNS_queries=2 A=1 AAAA=1 fixture_DNS_delay_ms=5 elapsed_ms=9.261
+--- PASS: TestUDPResolveReuseLoopbackDNS (0.20s)
+    --- PASS: TestUDPResolveReuseLoopbackDNS/reuse=false (0.19s)
+    --- PASS: TestUDPResolveReuseLoopbackDNS/reuse=true (0.01s)
+=== RUN   TestUDPResolveReusePreservesSuppliedInfoAndLiterals
+--- PASS: TestUDPResolveReusePreservesSuppliedInfoAndLiterals (0.00s)
+=== RUN   TestUDPResolveReuseAddressFamilyModes
+=== RUN   TestUDPResolveReuseAddressFamilyModes/auto
+=== RUN   TestUDPResolveReuseAddressFamilyModes/4
+=== RUN   TestUDPResolveReuseAddressFamilyModes/46
+=== RUN   TestUDPResolveReuseAddressFamilyModes/6
+=== RUN   TestUDPResolveReuseAddressFamilyModes/64
+=== RUN   TestUDPResolveReuseAddressFamilyModes/bound4
+=== RUN   TestUDPResolveReuseAddressFamilyModes/bound6
+--- PASS: TestUDPResolveReuseAddressFamilyModes (0.01s)
+    --- PASS: TestUDPResolveReuseAddressFamilyModes/auto (0.00s)
+    --- PASS: TestUDPResolveReuseAddressFamilyModes/4 (0.00s)
+    --- PASS: TestUDPResolveReuseAddressFamilyModes/46 (0.00s)
+    --- PASS: TestUDPResolveReuseAddressFamilyModes/6 (0.00s)
+    --- PASS: TestUDPResolveReuseAddressFamilyModes/64 (0.00s)
+    --- PASS: TestUDPResolveReuseAddressFamilyModes/bound4 (0.00s)
+    --- PASS: TestUDPResolveReuseAddressFamilyModes/bound6 (0.00s)
+=== RUN   TestUDPResolveReuseWriteFailureAndRecovery
+--- PASS: TestUDPResolveReuseWriteFailureAndRecovery (0.00s)
+ok  	github.com/apernet/hysteria/extras/v2/outbounds	1.333s
