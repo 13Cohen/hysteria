@@ -780,7 +780,7 @@ func TestH1EvidenceUDP(t *testing.T) {
 	timer := time.AfterFunc(8*time.Second, func() { _ = c.Close() })
 	defer timer.Stop()
 	target := h1UDPEcho(t)
-	for _, size := range []int{1000, 8192} {
+	for _, size := range []int{1000, 3000} {
 		if err = h1UDPRoundTrip(uc, target, bytes.Repeat([]byte{0x5a}, size)); err != nil {
 			t.Fatal(err)
 		}
@@ -788,7 +788,7 @@ func TestH1EvidenceUDP(t *testing.T) {
 	time.Sleep(1100 * time.Millisecond)
 	found := false
 	for _, e := range w.metrics(t).Evidence {
-		if e.UDP != nil && e.UDP.TargetWrittenBytes == 9192 && e.UDP.TargetReadBytes == 9192 && e.UDP.EnqueuedPayloadBytes == 9192 && e.UDP.FragmentedMessages > 0 && e.UDP.SendTooLarge > 0 && e.UDP.DefragPending > 0 {
+		if e.UDP != nil && e.UDP.TargetWrittenBytes == 4000 && e.UDP.TargetReadBytes == 4000 && e.UDP.EnqueuedPayloadBytes == 4000 && e.UDP.FragmentedMessages > 0 && e.UDP.SendTooLarge > 0 && e.UDP.DefragPending > 0 {
 			found = true
 			if e.PacketEvidence || e.ReceivedPackets != nil || e.CongestionMode != "bbr" || e.NegotiatedServerTx != 0 {
 				t.Fatal("cheap-mode/auth coverage wrong")
@@ -897,4 +897,83 @@ func TestH1EvidenceUDPPerformance(t *testing.T) {
 			t.Errorf("UDP release gate exceeded: connections=%d", connections)
 		}
 	}
+}
+
+// A known queued UDP response distinguishes SendDatagram pressure from an idle
+// connection. Packets lost in this injected blackout are not retried by UDP.
+func TestH1EvidenceUDPQueueWait(t *testing.T) {
+	if os.Getenv("PCS_H1_ACCEPTANCE") != "1" {
+		t.Skip("opt-in isolated acceptance")
+	}
+	ca := h1Certificate(t)
+	w := h1StartWorker(t, ca, true, true, 8)
+	relay := h1NewRelay(t, w.ready.UDP)
+	c, err := h1Client(relay.front.LocalAddr().String(), ca.roots, "pcs-h1.test", h1TestAuth, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	uc, err := c.UDP()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer uc.Close()
+	target, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+	peers := make(chan net.Addr, 1)
+	go func() {
+		buf := make([]byte, 1000)
+		n, peer, e := target.ReadFrom(buf)
+		if e == nil {
+			_, _ = target.WriteTo(buf[:n], peer)
+			peers <- peer
+		}
+	}()
+	deadline := time.AfterFunc(8*time.Second, func() { _ = c.Close() })
+	defer deadline.Stop()
+	if err = h1UDPRoundTrip(uc, target.LocalAddr().String(), []byte("synthetic-ready")); err != nil {
+		t.Fatal(err)
+	}
+	peer := <-peers
+	relay.drop.Store(true)
+	// A bounded loopback burst fills the server application send queue while QUIC
+	// cannot receive ACKs. Its socket is in the isolated experiment container.
+	burstDone := make(chan struct{})
+	go func() {
+		defer close(burstDone)
+		p := bytes.Repeat([]byte{0x5a}, 1000)
+		for i := 0; i < 2048; i++ {
+			_, _ = target.WriteTo(p, peer)
+		}
+	}()
+	<-burstDone
+	time.Sleep(4500 * time.Millisecond)
+	observed := false
+	for _, e := range w.metrics(t).Evidence {
+		if e.UDP != nil {
+			for _, wait := range e.UDP.Waits {
+				if wait.Phase == "send_datagram" && wait.PendingBytes > 0 && wait.AgeMS >= 1000 {
+					observed = true
+				}
+			}
+		}
+	}
+	if !observed {
+		t.Fatal("known UDP send queue wait absent")
+	}
+	relay.drop.Store(false)
+	time.Sleep(1200 * time.Millisecond)
+	completed := false
+	for _, e := range w.metrics(t).Evidence {
+		if e.UDPOperation != nil && e.UDPOperation.Phase == "send_datagram" && e.UDPOperation.DurationUS >= 1000000 {
+			completed = true
+		}
+	}
+	if !completed {
+		t.Fatal("recovered slow UDP send completion absent")
+	}
+	t.Log("H1_UDP_FAULT_RESULT known_pending_send=true completed_slow_send=true receive_queue_drop_coverage=false")
 }

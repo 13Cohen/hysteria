@@ -181,3 +181,28 @@ UDP matrix verifies 4096 echoes of 1000-byte payload (8,192,000 total payload
 bytes across both directions) through eight UDP sessions distributed over 1 or
 8 QUIC connections, three alternating pairs each. These loopback/quota-limited
 experiments bound instrumentation cost and do not predict Internet video bitrate.
+
+### Packet opt-in/UDP candidate acceptance, 2026-10-15 (HOLD)
+
+Core race and disabled original TCP/UDP regressions passed, as did the statistics
+HTTP lock regression. Validated TLS trust/name/auth rejection, source-port
+rebinding, injected loss and known pending TCP blackout/recovery again. Actual
+UDP echo and 3000-byte fragmentation yielded 4000 exact read/write/enqueued
+payload bytes, without counting the oversized first attempt twice. The first
+8192-byte test exposed the unchanged protocol's 4096-byte serialization buffer
+limit (client silent drop before the server); the acceptance payload was corrected
+to 3000, not the protocol behavior. A 4.5-second injected blackout produced a
+known pending SendDatagram wait and its slow completion on recovery. The initial
+2.5-second observation was too short: PTO progress repeatedly released a few
+queue entries, with no sampled phase age yet reaching one second.
+
+[All 28 performance runs](results/h1-20261015-packet-opt-in-hold.json) preserve the
+complete alternating pairs and small-only references, actual UTC bounds and
+cgroup/process metrics. Packet metadata allocation overhead disappeared, but
+TCP 1-connection pooled throughput ratio 0.947449, UDP 1-connection 0.941856,
+and UDP 8-connection 0.947157 still fail the unchanged 0.95 gate. TCP
+8-connection ratio was 0.979497. Server CPU per byte ratios were 1.069241,
+1.042334, 1.043885 and 1.028916 respectively. **Still HOLD.** Healthy TCP closes
+produced about 560 KiB of JSON per 130 MiB mixed run. The next candidate suppresses
+healthy per-stream close records into fixed connection totals and removes the
+duplicate UDP feed timer while retaining init and actual WriteTo timing.
