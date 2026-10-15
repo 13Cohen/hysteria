@@ -128,6 +128,10 @@ type evidenceState struct {
 	activeStreams      int // protected by manager mutex
 	untrackedStreams   atomic.Uint64
 	fastPathStreams    atomic.Uint64
+	completedStreams   atomic.Uint64
+	incompleteCloses   atomic.Uint64
+	suppressedCloses   atomic.Uint64
+	terminalDirections [6]atomic.Uint64
 }
 
 type quicEvidence struct {
@@ -464,6 +468,7 @@ func (m *quicEvidence) run() {
 				}
 				now := time.Now()
 				if !stream.ended.Load() && stream.slow(now) {
+					stream.slowObserved.Store(true)
 					e := m.connectionSnapshot(stream.connection, "stream_sample", now)
 					snapshot := stream.snapshot(now)
 					e.Stream = &snapshot

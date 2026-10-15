@@ -52,12 +52,24 @@ type StreamWaitSummary struct {
 	MaxAccountingAgeMS int64 `json:"max_accounting_age_ms"`
 }
 
+type StreamTerminalDirections struct {
+	None          uint64 `json:"none"`
+	EOF           uint64 `json:"eof"`
+	Closed        uint64 `json:"closed"`
+	TrafficDenied uint64 `json:"traffic_denied"`
+	Timeout       uint64 `json:"timeout"`
+	Other         uint64 `json:"other"`
+}
 type ApplicationEvidence struct {
-	ObservedActiveStreams     int               `json:"observed_active_streams"`
-	ToClient                  StreamWaitSummary `json:"to_client"`
-	ToTarget                  StreamWaitSummary `json:"to_target"`
-	UntrackedStreams          uint64            `json:"untracked_streams_total"`
-	FastPathUnobservedStreams uint64            `json:"fast_path_unobserved_streams_total"`
+	CompletedStreams          uint64                   `json:"completed_streams_total"`
+	IncompleteCloses          uint64                   `json:"incomplete_closes_total"`
+	SuppressedRoutineCloses   uint64                   `json:"suppressed_routine_closes_total"`
+	TerminalDirections        StreamTerminalDirections `json:"terminal_directions"`
+	ObservedActiveStreams     int                      `json:"observed_active_streams"`
+	ToClient                  StreamWaitSummary        `json:"to_client"`
+	ToTarget                  StreamWaitSummary        `json:"to_target"`
+	UntrackedStreams          uint64                   `json:"untracked_streams_total"`
+	FastPathUnobservedStreams uint64                   `json:"fast_path_unobserved_streams_total"`
 }
 
 const (
@@ -116,6 +128,8 @@ func (s *streamDirection) wrote(n, wanted int, started time.Time, err error) {
 func classifyStreamError(err error) string {
 	class := "none"
 	var ne net.Error
+	var se *quic.StreamError
+	var ae *quic.ApplicationError
 	switch {
 	case err == nil:
 		class = "none"
@@ -123,7 +137,7 @@ func classifyStreamError(err error) string {
 		class = "eof"
 	case errors.Is(err, errDisconnect):
 		class = "traffic_denied"
-	case errors.Is(err, net.ErrClosed):
+	case errors.Is(err, net.ErrClosed) || (errors.As(err, &se) && se.ErrorCode == 0) || (errors.As(err, &ae) && ae.ErrorCode == closeErrCodeOK):
 		class = "closed"
 	case errors.As(err, &ne) && ne.Timeout():
 		class = "timeout"
@@ -138,6 +152,7 @@ func (s *streamDirection) completeOperation(phase string, started time.Time, req
 	if elapsed < time.Second || s.owner == nil {
 		return
 	}
+	s.owner.slowObserved.Store(true)
 	captured := s.created.Add(time.Since(s.created))
 	e := s.owner.connection.snapshot("stream_operation_slow_complete", captured)
 	e.Operation = &StreamOperationEvidence{StreamID: s.owner.id, Direction: s.direction, Phase: phase,
@@ -150,7 +165,23 @@ func (s *streamDirection) finish(err error) {
 	s.errorClass.Store(&class)
 	s.pending.Store(0)
 	s.begin(streamPhaseFinished)
-	s.finished.Store(true)
+	if !s.finished.Swap(true) && s.owner != nil {
+		for i, name := range []string{"none", "eof", "closed", "traffic_denied", "timeout", "other"} {
+			if class == name {
+				s.owner.connection.terminalDirections[i].Add(1)
+				break
+			}
+		}
+		// A direction can return after first-direction close removed the slot. Do not
+		// let routine-close suppression conceal a late error or slow completion.
+		if s.owner.ended.Load() && s.owner.interesting(time.Now()) {
+			now := time.Now()
+			e := s.owner.manager.connectionSnapshot(s.owner.connection, "stream_terminal_update", now)
+			snapshot := s.owner.snapshot(now)
+			e.Stream = &snapshot
+			s.owner.manager.enqueue(e)
+		}
+	}
 }
 
 func (s *streamDirection) snapshot(now time.Time) StreamDirectionEvidence {
@@ -165,13 +196,14 @@ func (s *streamDirection) snapshot(now time.Time) StreamDirectionEvidence {
 }
 
 type evidenceStream struct {
-	manager    *quicEvidence
-	connection *evidenceState
-	id         uint64
-	created    time.Time
-	toClient   streamDirection
-	toTarget   streamDirection
-	ended      atomic.Bool
+	manager      *quicEvidence
+	connection   *evidenceState
+	id           uint64
+	created      time.Time
+	toClient     streamDirection
+	toTarget     streamDirection
+	ended        atomic.Bool
+	slowObserved atomic.Bool
 }
 
 func (s *evidenceStream) snapshot(now time.Time) StreamEvidence {
@@ -184,6 +216,21 @@ func (s *evidenceStream) slow(now time.Time) bool {
 	for _, direction := range []*streamDirection{&s.toClient, &s.toTarget} {
 		phase := direction.phase.Load()
 		if (phase == streamPhaseWrite || phase == streamPhaseAccounting) && direction.pending.Load() > 0 && evidenceAge(now, s.created, direction.phaseAt.Load()) >= 1000 {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *evidenceStream) interesting(now time.Time) bool {
+	if s.slowObserved.Load() || s.slow(now) {
+		return true
+	}
+	for _, d := range []*streamDirection{&s.toClient, &s.toTarget} {
+		if d.shortWrites.Load() > 0 || d.maxWriteNS.Load() >= int64(time.Second) {
+			return true
+		}
+		if c := d.errorClass.Load(); c != nil && *c != "none" && *c != "eof" && *c != "closed" {
 			return true
 		}
 	}
@@ -252,6 +299,14 @@ func (s *evidenceStream) close() {
 	s.connection.activeStreams--
 	m.mu.Unlock()
 	now := time.Now()
+	s.connection.completedStreams.Add(1)
+	if !s.toClient.finished.Load() || !s.toTarget.finished.Load() {
+		s.connection.incompleteCloses.Add(1)
+	}
+	if !s.interesting(now) {
+		s.connection.suppressedCloses.Add(1)
+		return
+	}
 	e := m.connectionSnapshot(s.connection, "stream_closed", now)
 	stream := s.snapshot(now)
 	e.Stream = &stream
@@ -293,7 +348,7 @@ func (m *quicEvidence) connectionSnapshot(s *evidenceState, event string, now ti
 	if !m.config.StreamEvidence {
 		return e
 	}
-	app := &ApplicationEvidence{UntrackedStreams: s.untrackedStreams.Load(), FastPathUnobservedStreams: s.fastPathStreams.Load()}
+	app := &ApplicationEvidence{CompletedStreams: s.completedStreams.Load(), IncompleteCloses: s.incompleteCloses.Load(), SuppressedRoutineCloses: s.suppressedCloses.Load(), TerminalDirections: StreamTerminalDirections{None: s.terminalDirections[0].Load(), EOF: s.terminalDirections[1].Load(), Closed: s.terminalDirections[2].Load(), TrafficDenied: s.terminalDirections[3].Load(), Timeout: s.terminalDirections[4].Load(), Other: s.terminalDirections[5].Load()}, UntrackedStreams: s.untrackedStreams.Load(), FastPathUnobservedStreams: s.fastPathStreams.Load()}
 	m.mu.Lock()
 	for _, stream := range m.streams {
 		if stream.connection != s {

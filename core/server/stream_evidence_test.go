@@ -85,6 +85,7 @@ func TestStreamEvidenceAccountingAndWriteBlockAreSeparate(t *testing.T) {
 		t.Fatalf("bad one-direction finish: %+v", final)
 	}
 	stream.toTarget.finish(nil)
+	stream.slowObserved.Store(true)
 	stream.close()
 	closed := <-m.events
 	if closed.Event != "stream_closed" || closed.Stream.BestEffort || closed.Stream.ID != stream.id {
@@ -161,6 +162,7 @@ func TestStreamEvidenceAuthenticationCapsAndFastCoverage(t *testing.T) {
 
 func TestStreamEvidenceConcurrentCloseIsBestEffortAndBounded(t *testing.T) {
 	m, stream := newTestStream(t)
+	stream.slowObserved.Store(true)
 	var wg sync.WaitGroup
 	for _, direction := range []*streamDirection{&stream.toClient, &stream.toTarget} {
 		wg.Add(1)
@@ -183,13 +185,23 @@ func TestStreamEvidenceConcurrentCloseIsBestEffortAndBounded(t *testing.T) {
 	stream.close()
 	stream.close()
 	wg.Wait()
-	if len(m.streams) != 0 || len(m.events) != 1 {
-		t.Fatal("duplicate close or leaked slot")
+	if len(m.streams) != 0 {
+		t.Fatal("leaked slot")
 	}
-	e := <-m.events
-	if e.Stream == nil || e.Stream.BestEffort == (e.Stream.ToClient.Finished && e.Stream.ToTarget.Finished) {
-		t.Fatal("finish-state bound is misleading")
+	closes := 0
+	for len(m.events) > 0 {
+		e := <-m.events
+		if e.Event == "stream_closed" {
+			closes++
+		}
+		if e.Stream == nil || e.Stream.BestEffort == (e.Stream.ToClient.Finished && e.Stream.ToTarget.Finished) {
+			t.Fatal("finish-state bound misleading")
+		}
 	}
+	if closes != 1 || stream.connection.completedStreams.Load() != 1 {
+		t.Fatal("duplicate close")
+	}
+
 }
 
 func TestStreamEvidenceConfigBounds(t *testing.T) {
@@ -239,5 +251,33 @@ func TestStreamEvidenceCompletedSlowOperationBetweenSamples(t *testing.T) {
 				t.Fatalf("completion timing inconsistent: %+v", op)
 			}
 		})
+	}
+}
+
+func TestStreamEvidenceRoutineCloseAndLateError(t *testing.T) {
+	for _, lateErr := range []error{nil, io.EOF, &quic.StreamError{ErrorCode: 0}, &quic.ApplicationError{ErrorCode: closeErrCodeOK}, io.ErrUnexpectedEOF} {
+		m, s := newTestStream(t)
+		s.toClient.finish(nil)
+		s.close()
+		if len(m.events) != 0 || s.connection.completedStreams.Load() != 1 || s.connection.incompleteCloses.Load() != 1 || s.connection.suppressedCloses.Load() != 1 {
+			t.Fatal("routine incomplete close not summarized")
+		}
+		s.toTarget.finish(lateErr)
+		app := m.connectionSnapshot(s.connection, "sample", time.Now()).Application
+		total := app.TerminalDirections.None + app.TerminalDirections.EOF + app.TerminalDirections.Closed + app.TerminalDirections.Other
+		if total != 2 {
+			t.Fatalf("direction completion denominator wrong %+v", app)
+		}
+		if lateErr == io.ErrUnexpectedEOF {
+			if len(m.events) != 1 {
+				t.Fatal("late abnormal terminal lost")
+			}
+			e := <-m.events
+			if e.Event != "stream_terminal_update" || e.Stream.ID != s.id || e.Stream.BestEffort || e.Stream.ToTarget.ErrorClass != "other" {
+				t.Fatal("late terminal inaccurate")
+			}
+		} else if len(m.events) != 0 {
+			t.Fatal("normal EOF/zero-code close emitted full log")
+		}
 	}
 }

@@ -10,6 +10,7 @@ import (
 // All counters belong to one authenticated QUIC connection. There is no extra
 // per-UDP-session registry. Successful SendDatagram means queued, not delivered.
 type UDPEvidence struct {
+	WaitsBestEffort             bool              `json:"waits_best_effort"`
 	ReceiveQueueDropsObservable bool              `json:"receive_queue_drops_observable"`
 	ReceivedDatagrams           uint64            `json:"received_datagrams"`
 	ReceivedPayloadBytes        uint64            `json:"received_payload_bytes"`
@@ -132,7 +133,7 @@ func (op *udpOperation) complete(n int, err error) {
 	op.busy.Store(false)
 }
 func (u *udpEvidence) snapshot(now time.Time) *UDPEvidence {
-	e := &UDPEvidence{ReceivedDatagrams: u.receivedDatagrams.Load(), ReceivedPayloadBytes: u.receivedPayloadBytes.Load(), ParseErrors: u.parseErrors.Load(), TargetReadDatagrams: u.targetReadDatagrams.Load(), TargetReadBytes: u.targetReadBytes.Load(), TargetReadErrors: u.targetReadErrors.Load(), TargetWriteCalls: u.targetWriteCalls.Load(), TargetWrittenBytes: u.targetWrittenBytes.Load(), TargetWriteErrors: u.targetWriteErrors.Load(), DefragPending: u.defragPending.Load(), SendAttempts: u.sendAttempts.Load(), EnqueuedDatagrams: u.enqueuedDatagrams.Load(), EnqueuedPayloadBytes: u.enqueuedPayloadBytes.Load(), SendTooLarge: u.sendTooLarge.Load(), SendErrors: u.sendErrors.Load(), SerializeDrops: u.serializeDrops.Load(), FragmentedMessages: u.fragmentedMessages.Load(), FragmentsAttempted: u.fragmentsAttempted.Load(), UntrackedOperations: u.untrackedOperations.Load(), Waits: []UDPWaitEvidence{}}
+	e := &UDPEvidence{WaitsBestEffort: true, ReceivedDatagrams: u.receivedDatagrams.Load(), ReceivedPayloadBytes: u.receivedPayloadBytes.Load(), ParseErrors: u.parseErrors.Load(), TargetReadDatagrams: u.targetReadDatagrams.Load(), TargetReadBytes: u.targetReadBytes.Load(), TargetReadErrors: u.targetReadErrors.Load(), TargetWriteCalls: u.targetWriteCalls.Load(), TargetWrittenBytes: u.targetWrittenBytes.Load(), TargetWriteErrors: u.targetWriteErrors.Load(), DefragPending: u.defragPending.Load(), SendAttempts: u.sendAttempts.Load(), EnqueuedDatagrams: u.enqueuedDatagrams.Load(), EnqueuedPayloadBytes: u.enqueuedPayloadBytes.Load(), SendTooLarge: u.sendTooLarge.Load(), SendErrors: u.sendErrors.Load(), SerializeDrops: u.serializeDrops.Load(), FragmentedMessages: u.fragmentedMessages.Load(), FragmentsAttempted: u.fragmentsAttempted.Load(), UntrackedOperations: u.untrackedOperations.Load(), Waits: []UDPWaitEvidence{}}
 	for i := range u.operations {
 		op := &u.operations[i]
 		phase := op.phase.Load()

@@ -353,9 +353,7 @@ func (m *udpSessionManager) feed(msg *protocol.UDPMessage) {
 	// Feed the message to the session
 	// Feed (send) errors are ignored for now,
 	// as some are temporary (e.g. invalid address)
-	op := entry.Evidence.begin(udpPhaseFeed, len(msg.Data))
-	n, err := entry.Feed(msg)
-	op.complete(n, err)
+	_, _ = entry.Feed(msg)
 }
 
 func (m *udpSessionManager) Count() int {

@@ -14,6 +14,8 @@ quicEvidence:
   interval: 5s
   maxConnections: 128
   streamEvidence: true
+  udpEvidence: true
+  packetEvidence: false
   maxStreams: 256
   maxStreamsPerConnection: 32
 ```
@@ -24,7 +26,7 @@ The interval is limited to 1–60 seconds; the registry to 1–512 connection sl
 
 Only successfully authenticated sessions emit `quic_evidence` records. They have a fresh random session namespace per server instance and an internal tracing sequence; they do not expose on-wire QUIC connection IDs. `stats_connection` links to the existing traffic API's randomly assigned connection number, but that 32-bit number alone is not a globally unique identifier. Repeated authentication on the same QUIC connection does not allocate a new session or emit a second authentication event.
 
-Connection event types are `authenticated`, periodic `sample`, and `closed`. Optional application evidence adds `stream_sample`, `stream_closed`, and `stream_operation_slow_complete`. Each record contains schema version, capture time, session age, packet/byte totals, acknowledged packet count, declared loss counts by reason, current/maximum PTO count and positive PTO-count callback updates, RTT gauges, congestion window, bytes/packets in flight, MTU, and ages of the most recent observed receive/send/ACK/metrics event. Close classification includes only a fixed category, numerical protocol code, and local/remote flag where meaningful. Raw error messages are excluded.
+Connection event types are `authenticated`, periodic `sample`, and `closed`. Optional application evidence adds `stream_sample`, selected `stream_closed`, `stream_terminal_update`, `stream_operation_slow_complete`, and `udp_operation_slow_complete`. Each record contains schema version, capture time, session age, optional packet/byte totals (null unless packetEvidence is enabled), acknowledged packet count, declared loss counts by reason, current/maximum PTO count and positive PTO-count callback updates, RTT gauges, congestion window, bytes/packets in flight, MTU, and ages of the most recent observed receive/send/ACK/metrics event. Close classification includes only a fixed category, numerical protocol code, and local/remote flag where meaningful. Raw error messages are excluded.
 
 `pto_positive_updates` counts calls to `UpdatedPTOCount(n)` where `n > 0`; it is deliberately not named total timer firings. In the pinned dependency's `internal/ackhandler/sent_packet_handler.go`, the positive callback follows the normal PTO timer branch; other call sites reset it to zero. The unvalidated-address special branch increments PTO without the same callback, so the callback is not a universal count of every internal timer path. Authentication gating further excludes pre-authentication activity.
 
@@ -42,7 +44,7 @@ Packet callbacks only update fixed-size atomics; they do not take the registry m
 
 Logger backpressure can block that one worker, but not packet callbacks or proxy shutdown. At most one emitter goroutine **per server instance** can remain blocked until the destination resumes. Repeated `NewServer`/`Close` against a permanently blocked sink can retain one worker per old instance because the logger interface has no cancellation primitive; the bound is not a process-wide no-leak guarantee. The CLI normally creates one server instance and exits on a fatal serving error. The repeated-instance test verifies those workers exit when the sink resumes. Shutdown is best effort and can discard queued final records. A snapshot already taken while a connection is closing can race with its final event; order by capture time and event type, not output position alone. Evidence may be incomplete during slow logging, saturation or shutdown.
 
-There is still transport overhead: enabling the upstream receive/send packet callbacks causes quic-go to assemble frame metadata, even though H1 does not persist it. Callback-only allocation/latency benchmarks cannot establish complete end-to-end cost. Before production, compare tracing off/on under the same bounded authenticated flow mix, inspect CPU/allocations/GC and p95/p99 latency, validate no sensitive fields escape, and confirm counters against known injected ACK/loss/idle sequences. No throughput benefit is claimed by adding observability.
+Full-packet mode adds transport overhead: explicitly enabling the upstream receive/send packet callbacks causes quic-go to assemble frame metadata, even though H1 does not persist it. Callback-only allocation/latency benchmarks cannot establish complete end-to-end cost. Before production, compare tracing off/on under the same bounded authenticated flow mix, inspect CPU/allocations/GC and p95/p99 latency, validate no sensitive fields escape, and confirm counters against known injected ACK/loss/idle sequences. No throughput benefit is claimed by adding observability.
 
 ## Why no quic-go fork yet
 
@@ -55,7 +57,7 @@ Targeted tests cover authentication gating, missing-observation sentinels, count
 Only push the `pcs/quic-evidence` branch. Upstream release workflows react to `app/v*` tags and master-specific push triggers; do not push release tags or update master while validating this candidate. PCS image/source pins remain unchanged until a separately reviewed rollout.
 
 
-## Validation recorded on 2026-10-15
+## Initial H1 validation recorded on 2026-10-15
 
 The candidate was checked on Linux/amd64 with Go 1.25.6, `GOTOOLCHAIN=local`, `GOWORK=off`, `CGO_ENABLED=1`, and the original module files (`-mod=readonly`). Work was serialized under the host experiment lock and limited to 0.6 CPU, 768 MiB RAM, `GOMEMLIMIT=512MiB`, `GOMAXPROCS=1`, and `-p 1`. No production container was rebuilt, replaced or restarted for H1.
 
@@ -80,7 +82,7 @@ go test -mod=readonly -p 1 -count=1 -timeout 90s -run '^TestServerQUICEvidenceCo
 
 The short benchmark ran on a throttled virtual CPU and covers only the two callbacks. It excludes quic-go's frame construction, JSON serialization, sink I/O and complete transport behavior; it is not a throughput or CPU-overhead acceptance result. The real QUIC integration verified post-authentication ACK count, a positive RTT/window, observation freshness, rejected credentials, payload integrity and a matching close session.
 
-Still required before production: a bounded tracing off/on QUIC workload comparison including throughput, CPU/allocations/GC and tail latency; actual deployed client interoperability and port-hopping checks; certificate-verification/security acceptance; injected network faults with known expected counter changes; and an observed rollout/rollback window. The fixture's `InsecureSkipVerify` does not weaken production defaults, but it also supplies no evidence that certificate validation passes. This branch remains disabled by default and is an observability candidate, with no demonstrated speed/stability benefit yet.
+At that initial revision, still required before production: a bounded tracing off/on QUIC workload comparison including throughput, CPU/allocations/GC and tail latency; actual deployed client interoperability and port-hopping checks; certificate-verification/security acceptance; injected network faults with known expected counter changes; and an observed rollout/rollback window. The fixture's `InsecureSkipVerify` does not weaken production defaults, but it also supplies no evidence that certificate validation passes. This branch remains disabled by default and is an observability candidate, with no demonstrated speed/stability benefit yet.
 
 
 ## Optional application copy evidence
@@ -206,3 +208,37 @@ and UDP 8-connection 0.947157 still fail the unchanged 0.95 gate. TCP
 produced about 560 KiB of JSON per 130 MiB mixed run. The next candidate suppresses
 healthy per-stream close records into fixed connection totals and removes the
 duplicate UDP feed timer while retaining init and actual WriteTo timing.
+
+### Routine-close aggregation candidate
+
+Healthy/unremarkable short copy streams no longer emit a full close JSON each.
+`application.completed_streams_total` counts tracked copy slots closed;
+`incomplete_closes_total` records when either copy direction was still running.
+`suppressed_routine_closes_total` counts suppressed records, not verified healthy
+requests, and is not an evidence queue drop. Parser/hook/dial failures precede
+copy tracing, and skipped/fast-path streams remain separately uncovered.
+`terminal_directions` counts actual direction completion by none/eof/closed/
+traffic_denied/timeout/other, including completion after slot removal. EOF and
+QUIC stream cancellation code zero and Hysteria application close 0x100 are expected closure classes; this classification
+does not alter the error returned by transport/copy functions. Snapshot totals
+are independently sampled and the last connection close can precede an unwind.
+
+A stream with a >=1s wait/completion, a short write or an abnormal error keeps its
+`stream_closed` details. A late interesting direction completion emits
+`stream_terminal_update` with the original stream ID, including when its initial
+routine close was suppressed. These are snapshots, not separate failure counts.
+All slow completed operations remain emitted. Ordinary live connections retain
+periodic bounded summaries. No transport/copy behavior changes.
+
+The duplicate ordinary UDP `feed` timer is removed: `init` still covers hook and
+outbound setup, and `target_write` still covers actual WriteTo including fallback
+DNS. Defragmentation remains a counter. UDP waits explicitly carry
+`waits_best_effort:true`: independent atomics can straddle a slot reuse and must
+not be interpreted as a transactional operation snapshot. Slow completion records
+are assembled by the operation's owning goroutine before releasing its slot.
+
+The final comparison uses four alternating pairs (balanced off-first/on-first)
+for both TCP and UDP. TCP still verifies 130 MiB and 256 small requests per run;
+UDP verifies 16384 1000-byte echoes (32,768,000 bytes, both directions), increasing
+run duration to reduce quota-boundary noise. Prior failing matrices remain above;
+the 5% throughput and 20% server CPU/byte gates remain unchanged.

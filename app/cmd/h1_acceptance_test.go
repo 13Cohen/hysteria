@@ -699,7 +699,7 @@ func TestH1EvidencePerformance(t *testing.T) {
 	ca := h1Certificate(t)
 	for _, connections := range []int{1, 8} {
 		var results []h1PerformanceResult
-		for pair := 0; pair < 3; pair++ {
+		for pair := 0; pair < 4; pair++ {
 			order := []bool{false, true}
 			if pair%2 == 1 {
 				order = []bool{true, false}
@@ -722,7 +722,7 @@ func TestH1EvidencePerformance(t *testing.T) {
 		}
 		throughputRatio := wall[0] / wall[1]
 		cpuRatio := cpu[1] / cpu[0]
-		t.Logf("H1_GATE connections=%d pairs=3 small_requests_per_mode=768 throughput_ratio=%.6f server_cpu_per_byte_ratio=%.6f", connections, throughputRatio, cpuRatio)
+		t.Logf("H1_GATE connections=%d pairs=4 small_requests_per_mode=1024 throughput_ratio=%.6f server_cpu_per_byte_ratio=%.6f", connections, throughputRatio, cpuRatio)
 		if throughputRatio < .95 || cpuRatio > 1.20 {
 			t.Errorf("H1 release gate exceeded: connections=%d throughput_ratio=%.4f CPU_per_byte_ratio=%.4f; pause release and analyze", connections, throughputRatio, cpuRatio)
 		}
@@ -807,7 +807,7 @@ func TestH1EvidenceUDPPerformance(t *testing.T) {
 	target := h1UDPEcho(t)
 	for _, connections := range []int{1, 8} {
 		var wall, cpu [2]float64
-		for pair := 0; pair < 3; pair++ {
+		for pair := 0; pair < 4; pair++ {
 			order := []bool{false, true}
 			if pair%2 == 1 {
 				order = []bool{true, false}
@@ -848,7 +848,7 @@ func TestH1EvidenceUDPPerformance(t *testing.T) {
 					go func(uc client.HyUDPConn) {
 						defer wg.Done()
 						payload := bytes.Repeat([]byte{0x5a}, 1000)
-						for j := 0; j < 512; j++ {
+						for j := 0; j < 2048; j++ {
 							at := time.Now()
 							if err := h1UDPRoundTrip(uc, target, payload); err != nil {
 								errCh <- err
@@ -872,7 +872,7 @@ func TestH1EvidenceUDPPerformance(t *testing.T) {
 				}
 				time.Sleep(100 * time.Millisecond)
 				after := w.metrics(t)
-				payload := uint64(4096 * 1000 * 2)
+				payload := uint64(16384 * 1000 * 2)
 				mib := float64(payload) / (1 << 20)
 				result := h1PerformanceResult{Workload: "udp_echo_8_sessions", Connections: connections, Pair: pair, Enabled: enabled, StartedAt: start.UTC(), FinishedAt: time.Now().UTC(), CgroupBefore: cb, CgroupAfter: h1CgroupSnapshot(), HarnessCPUSeconds: h1HarnessCPU() - hc, PayloadBytes: payload, SmallRequests: len(latency), WallSeconds: elapsed, ServerCPUSeconds: after.CPUSeconds - before.CPUSeconds, MiBPerSecond: mib / elapsed, CPUSecondsPerMiB: (after.CPUSeconds - before.CPUSeconds) / mib, SmallP50MS: h1Percentile(latency, .5), SmallP95MS: h1Percentile(latency, .95), SmallP99MS: h1Percentile(latency, .99), SmallMaxMS: h1Percentile(latency, 1), AllocBytes: after.TotalAlloc - before.TotalAlloc, GCCount: after.NumGC - before.NumGC, GCPauseNS: after.PauseNS - before.PauseNS, LogBytes: after.LogBytes - before.LogBytes}
 				b, _ := json.Marshal(result)
@@ -892,7 +892,7 @@ func TestH1EvidenceUDPPerformance(t *testing.T) {
 				w.close()
 			}
 		}
-		t.Logf("H1_UDP_GATE connections=%d pairs=3 throughput_ratio=%.6f server_cpu_per_byte_ratio=%.6f", connections, wall[0]/wall[1], cpu[1]/cpu[0])
+		t.Logf("H1_UDP_GATE connections=%d pairs=4 throughput_ratio=%.6f server_cpu_per_byte_ratio=%.6f", connections, wall[0]/wall[1], cpu[1]/cpu[0])
 		if wall[0]/wall[1] < .95 || cpu[1]/cpu[0] > 1.20 {
 			t.Errorf("UDP release gate exceeded: connections=%d", connections)
 		}
