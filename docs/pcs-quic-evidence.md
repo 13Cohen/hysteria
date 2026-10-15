@@ -13,6 +13,9 @@ quicEvidence:
   enabled: true
   interval: 5s
   maxConnections: 128
+  streamEvidence: true
+  maxStreams: 256
+  maxStreamsPerConnection: 32
 ```
 
 The interval is limited to 1–60 seconds; the registry to 1–512 connection slots. Defaults are 5 seconds and 128 slots. Slots include unauthenticated QUIC handshakes so a handshake flood cannot create an unbounded evidence registry. If no slot is available the connection proceeds without evidence; its transport is not rejected or altered. `untracked_connections_total` reports that coverage loss in subsequent authenticated-session records; if no tracked session authenticates, H1 emits no standalone server health record. The original TLS/authentication, masquerade, QUIC windows, idle timeout, BBR selection, and `DisablePathManager=true` port-hopping behavior remain unchanged.
@@ -21,7 +24,7 @@ The interval is limited to 1–60 seconds; the registry to 1–512 connection sl
 
 Only successfully authenticated sessions emit `quic_evidence` records. They have a fresh random session namespace per server instance and an internal tracing sequence; they do not expose on-wire QUIC connection IDs. `stats_connection` links to the existing traffic API's randomly assigned connection number, but that 32-bit number alone is not a globally unique identifier. Repeated authentication on the same QUIC connection does not allocate a new session or emit a second authentication event.
 
-Event types are `authenticated`, periodic `sample`, and `closed`. Each record contains schema version, capture time, session age, packet/byte totals, acknowledged packet count, declared loss counts by reason, current/maximum PTO count and positive PTO-count callback updates, RTT gauges, congestion window, bytes/packets in flight, MTU, and ages of the most recent observed receive/send/ACK/metrics event. Close classification includes only a fixed category, numerical protocol code, and local/remote flag where meaningful. Raw error messages are excluded.
+Connection event types are `authenticated`, periodic `sample`, and `closed`. Optional application evidence adds `stream_sample`, `stream_closed`, and `stream_operation_slow_complete`. Each record contains schema version, capture time, session age, packet/byte totals, acknowledged packet count, declared loss counts by reason, current/maximum PTO count and positive PTO-count callback updates, RTT gauges, congestion window, bytes/packets in flight, MTU, and ages of the most recent observed receive/send/ACK/metrics event. Close classification includes only a fixed category, numerical protocol code, and local/remote flag where meaningful. Raw error messages are excluded.
 
 `pto_positive_updates` counts calls to `UpdatedPTOCount(n)` where `n > 0`; it is deliberately not named total timer firings. In the pinned dependency's `internal/ackhandler/sent_packet_handler.go`, the positive callback follows the normal PTO timer branch; other call sites reset it to zero. The unvalidated-address special branch increments PTO without the same callback, so the callback is not a universal count of every internal timer path. Authentication gating further excludes pre-authentication activity.
 
@@ -31,7 +34,7 @@ No client/server addresses, domains, request targets, authentication IDs, passwo
 
 Counters start after authentication and describe callback observation time; a later ACK can refer to a packet sent before authentication. Packet byte counts include protocol overhead and are not application delivery counters. A packet declared lost can later be acknowledged; declared-loss and ACK counts must not be interpreted as mutually exclusive outcomes or direct path loss measurements. Gauge fields are independently sampled atomics, not a consistent lock-held snapshot of the transport. `-1` age means no callback has yet supplied that observation; zero-valued RTT/window/MTU fields may likewise be unobserved. The gauge-age field must accompany stale measurements.
 
-An idle timeout is a transport close reason, not by itself a confirmed user failure. Pending application work, useful-byte progress and blocked writes require application-level evidence and controlled end-to-end probes. This candidate does not yet log per-stream requests/outcomes, exact write-blocking locations, DNS attempts, or a complete request denominator. Do not infer users from shared password identities or infer device reconnection from a new session alone.
+An idle timeout is a transport close reason, not by itself a confirmed user failure. Pending application work, useful-byte progress and blocked writes require application-level evidence and controlled end-to-end probes. The optional application evidence below distinguishes pending copy operations, but does not split DNS/dial attempts or provide a complete request denominator. Do not infer users from shared password identities or infer device reconnection from a new session alone.
 
 ## Bounds and overhead
 
@@ -78,3 +81,47 @@ go test -mod=readonly -p 1 -count=1 -timeout 90s -run '^TestServerQUICEvidenceCo
 The short benchmark ran on a throttled virtual CPU and covers only the two callbacks. It excludes quic-go's frame construction, JSON serialization, sink I/O and complete transport behavior; it is not a throughput or CPU-overhead acceptance result. The real QUIC integration verified post-authentication ACK count, a positive RTT/window, observation freshness, rejected credentials, payload integrity and a matching close session.
 
 Still required before production: a bounded tracing off/on QUIC workload comparison including throughput, CPU/allocations/GC and tail latency; actual deployed client interoperability and port-hopping checks; certificate-verification/security acceptance; injected network faults with known expected counter changes; and an observed rollout/rollback window. The fixture's `InsecureSkipVerify` does not weaken production defaults, but it also supplies no evidence that certificate validation passes. This branch remains disabled by default and is an observability candidate, with no demonstrated speed/stability benefit yet.
+
+
+## Optional application copy evidence
+
+`streamEvidence` is independently off by default and requires `enabled: true`. Its registry defaults to 256 observed copy streams per server and 32 per authenticated session, bounded to 1–1024 and 1–128 respectively. A full registry skips observation, not traffic, and increments that session's `application.untracked_streams_total`. Slots are removed on stream or connection close; a still-unwinding copy goroutine can retain its fixed state until its existing I/O returns, but no longer occupies a registry slot. Stream IDs are local sequence numbers associated with the random evidence session, not on-wire QUIC stream IDs.
+
+This instrumentation covers only the existing `copyTwoWayEx` / 32 KiB `copyBufferLog` path used with a TrafficLogger, as in the deployment. The fast `io.Copy` path keeps its original dispatch and is explicitly counted as `application.fast_path_unobserved_streams_total`. Request parsing, hooks, initial putback data and outbound dialing precede the observed copy phase and are outside its byte counters. The original read → traffic accounting → Write sequence, short-write handling, first-error return and closing behavior remain unchanged. In particular, telemetry observes a short successful Write without adding a retry or changing its returned error.
+
+Each direction has fixed-size atomic fields: read and actual Write-return byte totals, phase (`initial`, `read`, `accounting`, `write`, `finished`), phase age, pending bytes, maximum completed Write duration, short-write count, finished flag and fixed error category. `to_client` reads the outbound target then writes QUIC; `to_target` reads QUIC then writes the outbound target. `written_bytes` means accepted by that Write call, not acknowledged by the remote client. Read wait is ordinary absence of input and is not classified as a stalled write. Accounting wait is separate because the existing TrafficStatsServer uses a single instance-wide RWMutex in its per-chunk LogTraffic method and management API, so connections can contend on that lock; this is a possible coupling point, not a measured production bottleneck.
+
+Each connection's `application` summary reports observed active copy streams, per-direction pending bytes, counts and maximum ages of accounting/write waits, and coverage losses. Empty wait sets have maximum age zero; interpret it together with the corresponding stream count. Initial unobserved direction phase age is -1. Atomics are sampled independently, so these fields are not a transactional snapshot.
+
+`stream_sample` is emitted only for an in-progress accounting/Write with pending bytes and age at least one second. `stream_closed` carries a best-effort snapshot and explicitly reports both directions' `finished` flags; `best_effort` remains true until both directions finished. Its maximum completed Write duration is a lifetime maximum, not evidence of a new incident at close time.
+
+A 1–2 second wait could start and finish between five-second samples. To retain that evidence, `stream_operation_slow_complete` is queued when an accounting/Write actually returns after at least one second. Its `operation` contains `stream_id`, `direction`, `phase`, `started_at`, `duration_us`, `requested_bytes`, `written_bytes` and `error_class`. Accounting's written count is zero because Write has not run yet. The start and capture timestamps are derived from the stream creation time plus monotonic elapsed time; duration does not use a potentially jumping wall clock. This rare completion path takes atomic snapshots and a nonblocking queue operation, without scanning the connection/stream registries or writing the logger inline. Normal chunks emit no events. A completion can arrive after a best-effort close while the second copy direction unwinds; associate by session/stream and operation timestamp rather than output ordering.
+
+All application events share H1's single worker, bounded queue and rate budget. Slow logging or bursts can drop events; `dropped_events_total` and stream coverage counters remain necessary when interpreting a log window. Authentication failures cannot create application evidence, and no targets, addresses, credential/authentication identities, packet contents or arbitrary error strings are introduced.
+
+### Application candidate acceptance, 2026-10-15 (HOLD)
+
+The final application candidate (including slow completed operations) passed the
+race-enabled focused core and original disabled-path regressions; verified local
+TLS CA/name rejection, invalid-auth rejection, source-port rebinding, injected
+1% packet loss, known pending transfer through a 3-second blackout, and the
+configured 8-second idle close. This fault-test timeout is not a production default.
+
+The actual JSON logging TCP performance matrix ran 14:09:09.589–14:10:34.100 UTC,
+with one server child process isolated from the client/harness CPU measurement,
+0.6 CPU and 768 MiB container limits, three interleaved pairs each for 1 and 8
+independent QUIC connections. Each mixed run verified 130 MiB and 256 small
+requests. The 1-connection pooled throughput ratio was 0.971056 and server CPU per
+byte ratio 1.043208. At 8 connections throughput ratio was 0.929079 (7.09% loss),
+violating the predeclared 5% gate, while CPU per byte ratio was 1.049269.
+**This candidate is HOLD and must not be deployed.** Reverse-order pairs show
+variance, but that does not waive the gate. Packet tracing constructs frame
+metadata upstream even when callbacks ignore frames; this is an optimization
+hypothesis, not yet a profiled attribution. The original run did not capture
+actual cgroup throttling/peak memory or harness CPU; the next run must do so.
+[Complete paired measurements](results/h1-20261015-full-packet-hold.json) include
+single-pair small-only references, which are exploratory, not acceptance gates.
+
+TCP copy evidence does not cover UDP relay or QUIC DATAGRAM queue overflow.
+Traffic API accounting precedes successful writes and may count an oversized
+UDP attempt again on fragmented retry; it is not delivered application bytes.

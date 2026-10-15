@@ -17,9 +17,12 @@ import (
 // QUICEvidenceConfig enables aggregate diagnostics without changing transport behavior.
 // A slot includes an unauthenticated handshake. Hitting the cap only skips tracing.
 type QUICEvidenceConfig struct {
-	Enabled        bool
-	Interval       time.Duration
-	MaxConnections int
+	Enabled                 bool
+	Interval                time.Duration
+	MaxConnections          int
+	StreamEvidence          bool
+	MaxStreams              int
+	MaxStreamsPerConnection int
 }
 
 // QUICEvidenceLogger is called by one background worker, never by a packet callback.
@@ -34,39 +37,42 @@ type QUICEvidenceLogger interface {
 // Counters start at authentication. Gauges are independently sampled atomics;
 // they do not form a transactionally consistent transport-state snapshot.
 type QUICEvidence struct {
-	Schema                    int       `json:"schema"`
-	Event                     string    `json:"event"`
-	Time                      time.Time `json:"time"`
-	Session                   string    `json:"session"`
-	StatsConnection           uint32    `json:"stats_connection"`
-	AuthenticatedAgeMS        int64     `json:"authenticated_age_ms"`
-	ReceivedPackets           uint64    `json:"received_packets"`
-	ReceivedBytes             uint64    `json:"received_bytes"`
-	SentPackets               uint64    `json:"sent_packets"`
-	SentBytes                 uint64    `json:"sent_bytes"`
-	AcknowledgedPackets       uint64    `json:"acknowledged_packets"`
-	LostPackets               uint64    `json:"lost_packets"`
-	TimeThresholdLosses       uint64    `json:"time_threshold_losses"`
-	ReorderingThresholdLosses uint64    `json:"reordering_threshold_losses"`
-	PTOCount                  uint32    `json:"pto_count"`
-	PTOMax                    uint32    `json:"pto_max"`
-	PTOPositiveUpdates        uint64    `json:"pto_positive_updates"`
-	LatestRTTUS               int64     `json:"latest_rtt_us"`
-	SmoothedRTTUS             int64     `json:"smoothed_rtt_us"`
-	MinRTTUS                  int64     `json:"min_rtt_us"`
-	CongestionWindow          int64     `json:"congestion_window_bytes"`
-	BytesInFlight             int64     `json:"bytes_in_flight"`
-	PacketsInFlight           int64     `json:"packets_in_flight"`
-	MTU                       int64     `json:"mtu"`
-	LastReceivedAgeMS         int64     `json:"last_received_age_ms"`
-	LastSentAgeMS             int64     `json:"last_sent_age_ms"`
-	LastACKAgeMS              int64     `json:"last_ack_age_ms"`
-	LastMetricsAgeMS          int64     `json:"last_metrics_age_ms"`
-	CloseClass                string    `json:"close_class,omitempty"`
-	CloseCode                 uint64    `json:"close_code,omitempty"`
-	CloseRemote               bool      `json:"close_remote,omitempty"`
-	DroppedEvents             uint64    `json:"dropped_events_total"`
-	UntrackedConnections      uint64    `json:"untracked_connections_total"`
+	Operation                 *StreamOperationEvidence `json:"operation,omitempty"`
+	Stream                    *StreamEvidence          `json:"stream,omitempty"`
+	Application               *ApplicationEvidence     `json:"application,omitempty"`
+	Schema                    int                      `json:"schema"`
+	Event                     string                   `json:"event"`
+	Time                      time.Time                `json:"time"`
+	Session                   string                   `json:"session"`
+	StatsConnection           uint32                   `json:"stats_connection"`
+	AuthenticatedAgeMS        int64                    `json:"authenticated_age_ms"`
+	ReceivedPackets           uint64                   `json:"received_packets"`
+	ReceivedBytes             uint64                   `json:"received_bytes"`
+	SentPackets               uint64                   `json:"sent_packets"`
+	SentBytes                 uint64                   `json:"sent_bytes"`
+	AcknowledgedPackets       uint64                   `json:"acknowledged_packets"`
+	LostPackets               uint64                   `json:"lost_packets"`
+	TimeThresholdLosses       uint64                   `json:"time_threshold_losses"`
+	ReorderingThresholdLosses uint64                   `json:"reordering_threshold_losses"`
+	PTOCount                  uint32                   `json:"pto_count"`
+	PTOMax                    uint32                   `json:"pto_max"`
+	PTOPositiveUpdates        uint64                   `json:"pto_positive_updates"`
+	LatestRTTUS               int64                    `json:"latest_rtt_us"`
+	SmoothedRTTUS             int64                    `json:"smoothed_rtt_us"`
+	MinRTTUS                  int64                    `json:"min_rtt_us"`
+	CongestionWindow          int64                    `json:"congestion_window_bytes"`
+	BytesInFlight             int64                    `json:"bytes_in_flight"`
+	PacketsInFlight           int64                    `json:"packets_in_flight"`
+	MTU                       int64                    `json:"mtu"`
+	LastReceivedAgeMS         int64                    `json:"last_received_age_ms"`
+	LastSentAgeMS             int64                    `json:"last_sent_age_ms"`
+	LastACKAgeMS              int64                    `json:"last_ack_age_ms"`
+	LastMetricsAgeMS          int64                    `json:"last_metrics_age_ms"`
+	CloseClass                string                   `json:"close_class,omitempty"`
+	CloseCode                 uint64                   `json:"close_code,omitempty"`
+	CloseRemote               bool                     `json:"close_remote,omitempty"`
+	DroppedEvents             uint64                   `json:"dropped_events_total"`
+	UntrackedConnections      uint64                   `json:"untracked_connections_total"`
 }
 
 const evidenceQueueCapacity = 64
@@ -109,20 +115,25 @@ type evidenceState struct {
 	lastMetrics        atomic.Int64
 	close              atomic.Pointer[evidenceClose]
 	ended              atomic.Bool
+	activeStreams      int // protected by manager mutex
+	untrackedStreams   atomic.Uint64
+	fastPathStreams    atomic.Uint64
 }
 
 type quicEvidence struct {
-	config    QUICEvidenceConfig
-	logger    QUICEvidenceLogger
-	prefix    string
-	mu        sync.Mutex // Connection lifecycle only; packet callbacks never take it.
-	states    map[quic.ConnectionTracingID]*evidenceState
-	events    chan QUICEvidence
-	stop      chan struct{}
-	done      chan struct{}
-	stopOnce  sync.Once
-	dropped   atomic.Uint64
-	untracked atomic.Uint64
+	config     QUICEvidenceConfig
+	logger     QUICEvidenceLogger
+	prefix     string
+	mu         sync.Mutex // Connection lifecycle only; packet callbacks never take it.
+	states     map[quic.ConnectionTracingID]*evidenceState
+	streams    map[uint64]*evidenceStream
+	nextStream uint64 // protected by manager mutex
+	events     chan QUICEvidence
+	stop       chan struct{}
+	done       chan struct{}
+	stopOnce   sync.Once
+	dropped    atomic.Uint64
+	untracked  atomic.Uint64
 	// Used only by the single emitter worker.
 	rateTime   time.Time
 	rateTokens float64
@@ -130,6 +141,9 @@ type quicEvidence struct {
 
 func (c *QUICEvidenceConfig) validate(logger QUICEvidenceLogger) error {
 	if !c.Enabled {
+		if c.StreamEvidence {
+			return errors.New("streamEvidence requires quicEvidence enabled")
+		}
 		return nil
 	}
 	if logger == nil {
@@ -147,22 +161,33 @@ func (c *QUICEvidenceConfig) validate(logger QUICEvidenceLogger) error {
 	if c.MaxConnections < 1 || c.MaxConnections > 512 {
 		return errors.New("quicEvidence maxConnections must be between 1 and 512")
 	}
+	if c.StreamEvidence {
+		if c.MaxStreams == 0 {
+			c.MaxStreams = 256
+		}
+		if c.MaxStreamsPerConnection == 0 {
+			c.MaxStreamsPerConnection = 32
+		}
+		if c.MaxStreams < 1 || c.MaxStreams > 1024 || c.MaxStreamsPerConnection < 1 || c.MaxStreamsPerConnection > 128 {
+			return errors.New("stream evidence limits require maxStreams 1..1024 and maxStreamsPerConnection 1..128")
+		}
+	}
 	return nil
 }
 
 func newQUICEvidence(config QUICEvidenceConfig, logger QUICEvidenceLogger) (*quicEvidence, error) {
-	if !config.Enabled {
-		return nil, nil
-	}
 	if err := config.validate(logger); err != nil {
 		return nil, err
+	}
+	if !config.Enabled {
+		return nil, nil
 	}
 	var prefix [16]byte
 	if _, err := rand.Read(prefix[:]); err != nil {
 		return nil, fmt.Errorf("initialize evidence session IDs: %w", err)
 	}
 	return &quicEvidence{config: config, logger: logger, prefix: hex.EncodeToString(prefix[:]),
-		states: make(map[quic.ConnectionTracingID]*evidenceState), events: make(chan QUICEvidence, evidenceQueueCapacity),
+		states: make(map[quic.ConnectionTracingID]*evidenceState), streams: make(map[uint64]*evidenceStream), events: make(chan QUICEvidence, evidenceQueueCapacity),
 		stop: make(chan struct{}), done: make(chan struct{}),
 		rateTime: time.Now(), rateTokens: float64(config.MaxConnections + evidenceQueueCapacity)}, nil
 }
@@ -257,7 +282,8 @@ func (m *quicEvidence) tracer(ctx context.Context, _ logging.Perspective, _ quic
 			delete(m.states, id)
 			m.mu.Unlock()
 			if s.authenticated.Load() {
-				m.enqueue(s.snapshot("closed", time.Now()))
+				m.closeConnectionStreams(s)
+				m.enqueue(m.connectionSnapshot(s, "closed", time.Now()))
 			}
 		},
 	}
@@ -304,7 +330,7 @@ func (m *quicEvidence) authenticate(ctx context.Context, statsConnection uint32)
 	s.statsConnection = statsConnection
 	s.authenticated.Store(true)
 	m.mu.Unlock()
-	m.enqueue(s.snapshot("authenticated", time.Now()))
+	m.enqueue(m.connectionSnapshot(s, "authenticated", time.Now()))
 }
 
 func evidenceAge(now time.Time, created time.Time, ns int64) int64 {
@@ -381,6 +407,10 @@ func (m *quicEvidence) run() {
 					states = append(states, s)
 				}
 			}
+			streams := make([]*evidenceStream, 0, len(m.streams))
+			for _, stream := range m.streams {
+				streams = append(streams, stream)
+			}
 			m.mu.Unlock()
 			for _, s := range states {
 				select {
@@ -389,7 +419,21 @@ func (m *quicEvidence) run() {
 				default:
 				}
 				if !s.ended.Load() {
-					m.emit(s.snapshot("sample", time.Now()))
+					m.emit(m.connectionSnapshot(s, "sample", time.Now()))
+				}
+			}
+			for _, stream := range streams {
+				select {
+				case <-m.stop:
+					return
+				default:
+				}
+				now := time.Now()
+				if !stream.ended.Load() && stream.slow(now) {
+					e := m.connectionSnapshot(stream.connection, "stream_sample", now)
+					snapshot := stream.snapshot(now)
+					e.Stream = &snapshot
+					m.emit(e)
 				}
 			}
 		}

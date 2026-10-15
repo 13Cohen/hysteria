@@ -310,8 +310,11 @@ func (h *h3sHandler) handleTCPRequest(stream *utils.QStream) {
 	}
 	// Start proxying
 	if trafficLogger != nil {
-		err = copyTwoWayEx(h.authID, stream, tConn, trafficLogger, streamStats)
+		evidence := h.evidence.traceStream(h.conn.Context())
+		defer evidence.close()
+		err = copyTwoWayEx(h.authID, stream, tConn, trafficLogger, streamStats, evidence)
 	} else {
+		h.evidence.markFastPath(h.conn.Context())
 		// Use the fast path if no traffic logger is set
 		err = copyTwoWay(stream, tConn)
 	}

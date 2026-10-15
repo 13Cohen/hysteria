@@ -235,14 +235,17 @@ type serverConfigTrafficStats struct {
 }
 
 type serverConfigQUICEvidence struct {
-	Enabled        bool          `mapstructure:"enabled"`
-	Interval       time.Duration `mapstructure:"interval"`
-	MaxConnections int           `mapstructure:"maxConnections"`
+	Enabled                 bool          `mapstructure:"enabled"`
+	Interval                time.Duration `mapstructure:"interval"`
+	MaxConnections          int           `mapstructure:"maxConnections"`
+	StreamEvidence          bool          `mapstructure:"streamEvidence"`
+	MaxStreams              int           `mapstructure:"maxStreams"`
+	MaxStreamsPerConnection int           `mapstructure:"maxStreamsPerConnection"`
 }
 
 func (c *serverConfig) fillQUICEvidence(hyConfig *server.Config) error {
 	hyConfig.QUICEvidenceConfig = server.QUICEvidenceConfig{Enabled: c.QUICEvidence.Enabled,
-		Interval: c.QUICEvidence.Interval, MaxConnections: c.QUICEvidence.MaxConnections}
+		Interval: c.QUICEvidence.Interval, MaxConnections: c.QUICEvidence.MaxConnections, StreamEvidence: c.QUICEvidence.StreamEvidence, MaxStreams: c.QUICEvidence.MaxStreams, MaxStreamsPerConnection: c.QUICEvidence.MaxStreamsPerConnection}
 	if c.QUICEvidence.Enabled {
 		hyConfig.QUICEvidenceLogger = &serverLogger{}
 	}

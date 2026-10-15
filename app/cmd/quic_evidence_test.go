@@ -12,7 +12,7 @@ import (
 func TestServerQUICEvidenceConfig(t *testing.T) {
 	v := viper.New()
 	v.SetConfigType("yaml")
-	if err := v.ReadConfig(strings.NewReader("quicEvidence:\n  enabled: true\n  interval: 7s\n  maxConnections: 42\n")); err != nil {
+	if err := v.ReadConfig(strings.NewReader("quicEvidence:\n  enabled: true\n  interval: 7s\n  maxConnections: 42\n  streamEvidence: true\n  maxStreams: 100\n  maxStreamsPerConnection: 12\n")); err != nil {
 		t.Fatal(err)
 	}
 	var config serverConfig
@@ -23,7 +23,7 @@ func TestServerQUICEvidenceConfig(t *testing.T) {
 	if err := config.fillQUICEvidence(&core); err != nil {
 		t.Fatal(err)
 	}
-	if !core.QUICEvidenceConfig.Enabled || core.QUICEvidenceConfig.Interval != 7*time.Second || core.QUICEvidenceConfig.MaxConnections != 42 || core.QUICEvidenceLogger == nil {
+	if !core.QUICEvidenceConfig.Enabled || core.QUICEvidenceConfig.Interval != 7*time.Second || core.QUICEvidenceConfig.MaxConnections != 42 || core.QUICEvidenceLogger == nil || !core.QUICEvidenceConfig.StreamEvidence || core.QUICEvidenceConfig.MaxStreams != 100 || core.QUICEvidenceConfig.MaxStreamsPerConnection != 12 {
 		t.Fatalf("bad parsed config: %+v", core.QUICEvidenceConfig)
 	}
 	config.QUICEvidence.Enabled = false
