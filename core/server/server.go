@@ -46,6 +46,10 @@ func NewServer(config *Config) (Server, error) {
 		return nil, err
 	}
 	tlsConfig := convertToStdTLSConfig(config)
+	evidence, err := newQUICEvidence(config.QUICEvidenceConfig, config.QUICEvidenceLogger)
+	if err != nil {
+		return nil, err
+	}
 	quicConfig := &quic.Config{
 		InitialStreamReceiveWindow:     config.QUICConfig.InitialStreamReceiveWindow,
 		MaxStreamReceiveWindow:         config.QUICConfig.MaxStreamReceiveWindow,
@@ -58,20 +62,28 @@ func NewServer(config *Config) (Server, error) {
 		MaxDatagramFrameSize:           protocol.MaxDatagramFrameSize,
 		DisablePathManager:             true,
 	}
+	if evidence != nil {
+		quicConfig.Tracer = evidence.tracer
+	}
 	listener, err := quic.Listen(config.Conn, tlsConfig, quicConfig)
 	if err != nil {
 		_ = config.Conn.Close()
 		return nil, err
 	}
+	if evidence != nil {
+		go evidence.run()
+	}
 	return &serverImpl{
 		config:   config,
 		listener: listener,
+		evidence: evidence,
 	}, nil
 }
 
 type serverImpl struct {
 	config   *Config
 	listener *quic.Listener
+	evidence *quicEvidence
 }
 
 func (s *serverImpl) Serve() error {
@@ -87,11 +99,13 @@ func (s *serverImpl) Serve() error {
 func (s *serverImpl) Close() error {
 	err := s.listener.Close()
 	_ = s.config.Conn.Close()
+	s.evidence.shutdown()
 	return err
 }
 
 func (s *serverImpl) handleClient(conn *quic.Conn) {
 	handler := newH3sHandler(s.config, conn)
+	handler.evidence = s.evidence
 	h3s := http3.Server{
 		Handler:        handler,
 		StreamHijacker: handler.ProxyStreamHijacker,
@@ -118,7 +132,8 @@ type h3sHandler struct {
 	authID        string
 	connID        uint32 // a random id for dump streams
 
-	udpSM *udpSessionManager // Only set after authentication
+	udpSM    *udpSessionManager // Only set after authentication
+	evidence *quicEvidence
 }
 
 func newH3sHandler(config *Config, conn *quic.Conn) *h3sHandler {
@@ -150,6 +165,7 @@ func (h *h3sHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// Set authenticated flag
 			h.authenticated = true
 			h.authID = id
+			h.evidence.authenticate(h.conn.Context(), h.connID)
 			if h.config.IgnoreClientBandwidth {
 				// Ignore client bandwidth, always use BBR
 				congestion.UseBBR(h.conn)

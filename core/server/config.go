@@ -36,6 +36,8 @@ type Config struct {
 	EventLogger           EventLogger
 	TrafficLogger         TrafficLogger
 	MasqHandler           http.Handler
+	QUICEvidenceConfig    QUICEvidenceConfig
+	QUICEvidenceLogger    QUICEvidenceLogger
 }
 
 // fill fills the fields that are not set by the user with default values when possible,
@@ -94,6 +96,9 @@ func (c *Config) fill() error {
 	}
 	if c.Authenticator == nil {
 		return errors.ConfigError{Field: "Authenticator", Reason: "must be set"}
+	}
+	if err := c.QUICEvidenceConfig.validate(c.QUICEvidenceLogger); err != nil {
+		return errors.ConfigError{Field: "QUICEvidence", Reason: err.Error()}
 	}
 	return nil
 }

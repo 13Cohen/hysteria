@@ -71,6 +71,7 @@ type serverConfig struct {
 	ACL                   serverConfigACL             `mapstructure:"acl"`
 	Outbounds             []serverConfigOutboundEntry `mapstructure:"outbounds"`
 	TrafficStats          serverConfigTrafficStats    `mapstructure:"trafficStats"`
+	QUICEvidence          serverConfigQUICEvidence    `mapstructure:"quicEvidence"`
 	Masquerade            serverConfigMasquerade      `mapstructure:"masquerade"`
 }
 
@@ -231,6 +232,21 @@ type serverConfigOutboundEntry struct {
 type serverConfigTrafficStats struct {
 	Listen string `mapstructure:"listen"`
 	Secret string `mapstructure:"secret"`
+}
+
+type serverConfigQUICEvidence struct {
+	Enabled        bool          `mapstructure:"enabled"`
+	Interval       time.Duration `mapstructure:"interval"`
+	MaxConnections int           `mapstructure:"maxConnections"`
+}
+
+func (c *serverConfig) fillQUICEvidence(hyConfig *server.Config) error {
+	hyConfig.QUICEvidenceConfig = server.QUICEvidenceConfig{Enabled: c.QUICEvidence.Enabled,
+		Interval: c.QUICEvidence.Interval, MaxConnections: c.QUICEvidence.MaxConnections}
+	if c.QUICEvidence.Enabled {
+		hyConfig.QUICEvidenceLogger = &serverLogger{}
+	}
+	return nil
 }
 
 type serverConfigMasqueradeFile struct {
@@ -921,6 +937,7 @@ func (c *serverConfig) Config() (*server.Config, error) {
 		c.fillAuthenticator,
 		c.fillEventLogger,
 		c.fillTrafficLogger,
+		c.fillQUICEvidence,
 		c.fillMasqHandler,
 	}
 	for _, f := range fillers {
@@ -1004,6 +1021,10 @@ func geoDownloadErrFunc(err error) {
 }
 
 type serverLogger struct{}
+
+func (l *serverLogger) LogQUICEvidence(e server.QUICEvidence) {
+	logger.Info("quic_evidence", zap.Any("evidence", e))
+}
 
 func (l *serverLogger) Connect(addr net.Addr, id string, tx uint64) {
 	logger.Info("client connected", zap.String("addr", addr.String()), zap.String("id", id), zap.Uint64("tx", tx))
