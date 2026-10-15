@@ -1,0 +1,24 @@
+=== RUN   TestPacerGainDiagnostic
+=== RUN   TestPacerGainDiagnostic/probe_bw_high
+    pacer_diagnostic_test.go:58: mode=probe_bw_high pacing_gain=1.250000000 cwnd_gain=2 calculated_Bps=125000 actual_pacer_Bps=200000 actual_next_packet_wait_ns=6400000
+    pacer_diagnostic_test.go:65: calculated pacing gate: actual=200000 want=125000 bytes/s
+=== RUN   TestPacerGainDiagnostic/probe_bw_low
+    pacer_diagnostic_test.go:58: mode=probe_bw_low pacing_gain=0.750000000 cwnd_gain=2 calculated_Bps=75000 actual_pacer_Bps=200000 actual_next_packet_wait_ns=6400000
+    pacer_diagnostic_test.go:65: calculated pacing gate: actual=200000 want=75000 bytes/s
+=== RUN   TestPacerGainDiagnostic/probe_bw_cruise
+    pacer_diagnostic_test.go:58: mode=probe_bw_cruise pacing_gain=1.000000000 cwnd_gain=2 calculated_Bps=100000 actual_pacer_Bps=200000 actual_next_packet_wait_ns=6400000
+    pacer_diagnostic_test.go:65: calculated pacing gate: actual=200000 want=100000 bytes/s
+=== RUN   TestPacerGainDiagnostic/drain
+    pacer_diagnostic_test.go:58: mode=drain pacing_gain=0.346620451 cwnd_gain=2 calculated_Bps=34662 actual_pacer_Bps=200000 actual_next_packet_wait_ns=6400000
+    pacer_diagnostic_test.go:65: calculated pacing gate: actual=200000 want=65536 bytes/s
+--- FAIL: TestPacerGainDiagnostic (0.00s)
+    --- FAIL: TestPacerGainDiagnostic/probe_bw_high (0.00s)
+    --- FAIL: TestPacerGainDiagnostic/probe_bw_low (0.00s)
+    --- FAIL: TestPacerGainDiagnostic/probe_bw_cruise (0.00s)
+    --- FAIL: TestPacerGainDiagnostic/drain (0.00s)
+=== RUN   TestPacerFloorUnitsDiagnostic
+    pacer_diagnostic_test.go:84: actual_floor_Bps=65536 actual_floor_bps=524288 (pacer consumes bytes/s)
+--- PASS: TestPacerFloorUnitsDiagnostic (0.00s)
+FAIL
+FAIL	github.com/apernet/hysteria/core/v2/internal/congestion/bbr	0.007s
+FAIL
