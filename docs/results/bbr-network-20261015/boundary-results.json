@@ -1,0 +1,49 @@
+{
+  "race_enabled": true,
+  "result": "PASS",
+  "elapsed_seconds": 1.099,
+  "states": [
+    {
+      "state": "startup_no_estimate_no_rtt",
+      "actual_pacer_Bps": 1181696,
+      "effective_cwnd": 40960,
+      "wait_ns": 1083189
+    },
+    {
+      "state": "startup_no_estimate_160ms",
+      "actual_pacer_Bps": 738560,
+      "effective_cwnd": 40960,
+      "wait_ns": 1733103
+    },
+    {
+      "state": "probe_rtt",
+      "actual_pacer_Bps": 100000,
+      "effective_cwnd": 5120,
+      "wait_ns": 12800000
+    },
+    {
+      "state": "recovery_conservation",
+      "actual_pacer_Bps": 75000,
+      "effective_cwnd": 5120,
+      "wait_ns": 17066667
+    },
+    {
+      "state": "recovery_growth",
+      "actual_pacer_Bps": 125000,
+      "effective_cwnd": 5120,
+      "wait_ns": 10240000
+    },
+    {
+      "state": "low_estimate_floor",
+      "actual_pacer_Bps": 65536,
+      "effective_cwnd": 40960,
+      "wait_ns": 19531250
+    }
+  ],
+  "additional_diagnostics": [
+    "TestPacerGainDiagnostic: probe_bw_high,probe_bw_low,probe_bw_cruise,drain",
+    "TestPacerFloorUnitsDiagnostic:65536bytes/s=524288bits/s"
+  ],
+  "source_file": "core/internal/congestion/bbr/pacer_boundaries_test.go",
+  "scope": "Fake-clock boundary regression; not a network throughput measurement."
+}

@@ -77,25 +77,37 @@ the baseline test binary always owns the client. Build with the fixed Go 1.25.6
 toolchain and unchanged module versions. Published results contain numeric
 aggregates and hashes; raw H1 events remain in private evidence storage.
 
-## Interim result, 2026-10-15
+## Final original matrix, 2026-10-15
 
-The first eight official runs completed. The one-connection TCP-only group is
-**HOLD**: aggregate TCP goodput improved 24.79%, mean per-run small-request p95
-fell 52.35%, but server CPU per received byte rose 28.41%, exceeding the frozen
-20% ceiling. The measurement itself was valid: no measured quota throttling,
-scheduler p95 at most 2.586 ms, and exact reliable payload in all four runs.
+All sixteen official runs completed with exact reliable payload, no accepted
+corrupt or duplicate UDP data, and valid simulator measurements. The original
+candidate is **HOLD**. No production pacer change is recommended from this matrix.
 
-The one-connection mixed group passed its gates: TCP goodput improved 41.54%,
-mean per-run small-request p95 fell 71.42%, and actual UDP delivery increased
-from 41.694% to 78.194% of the same 3,600 offered payloads per run. Server CPU per
-actually delivered byte rose 4.92%. This is a result in the defined simulation,
-not a production speed claim. The candidate's target-read and enqueue counters
-did not reach all target-offered bytes within the fixed receive window; those
-unread or pending bytes are not silently counted as simulator drops or delivery.
+| Profile | QUIC connections | TCP goodput change | UDP received goodput change | Mean run small-request p95 change | Server CPU per received byte change | Gate result |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| TCP only | 1 | +24.79% | — | −52.35% | +28.41% | HOLD: CPU |
+| TCP only | 4 | −10.20% | — | −9.23% | +15.53% | HOLD: TCP goodput |
+| Mixed with injection | 1 | +41.54% | +87.54% | −71.42% | +4.92% | PASS |
+| Mixed with injection | 4 | −15.72% | +34.92% | −29.57% | +3.73% | HOLD: TCP goodput |
 
-The overall candidate remains **HOLD** because the TCP-only CPU gate failed.
-Four-connection groups are still pending. Numeric per-run records and the frozen
-plan are in [`results.json`](results/bbr-network-20261015/results.json), with
-separate lock windows for alignment with production observations. The independent
-UDP accounting candidate was accepted on its own branch, retaining the original
-pacer; that result does not override this pacer hold.
+The four-connection TCP-only result was stable across the ABBA order: baseline
+completion 5.019/5.023 seconds versus candidate 5.617/5.566 seconds for the same
+2,228,224 bytes. The one-connection CPU result also repeated: baseline server
+CPU 0.297/0.305 seconds versus candidate 0.388/0.386 seconds. These are separate
+reasons to hold the patch. Favorable small-request or UDP results do not erase
+bulk TCP or CPU regressions.
+
+In the mixed groups, validated UDP delivery rose from 41.694% to 78.194% for one
+connection, and from 52.028% to 70.194% for four connections. The same 3,600
+payloads were offered per run. The candidate's target-read and enqueue counters
+could remain below offered bytes within the fixed receive window; those unread
+or pending bytes are not silently counted as simulator drops or delivery.
+These results describe the configured simulation, not production Internet gains.
+
+The immutable per-run numeric records, frozen gates and correction are retained
+in [`results.json`](results/bbr-network-20261015/results.json), with exact lock
+windows for correlation with production observations. Boundary race results are
+in [`boundary-results.json`](results/bbr-network-20261015/boundary-results.json).
+An independent longer diagnostic may examine fixed CPU cost and pacing wakeups,
+but cannot replace this failed matrix or silently change its 20% CPU ceiling.
+The independently accepted UDP accounting branch retains the old pacer.
