@@ -203,11 +203,12 @@ type serverConfigACL struct {
 }
 
 type serverConfigOutboundDirect struct {
-	Mode       string `mapstructure:"mode"`
-	BindIPv4   string `mapstructure:"bindIPv4"`
-	BindIPv6   string `mapstructure:"bindIPv6"`
-	BindDevice string `mapstructure:"bindDevice"`
-	FastOpen   bool   `mapstructure:"fastOpen"`
+	UDPResolveReuse bool   `mapstructure:"udpResolveReuse"`
+	Mode            string `mapstructure:"mode"`
+	BindIPv4        string `mapstructure:"bindIPv4"`
+	BindIPv6        string `mapstructure:"bindIPv6"`
+	BindDevice      string `mapstructure:"bindDevice"`
+	FastOpen        bool   `mapstructure:"fastOpen"`
 }
 
 type serverConfigOutboundSOCKS5 struct {
@@ -590,6 +591,7 @@ func serverConfigOutboundDirectToOutbound(c serverConfigOutboundDirect) (outboun
 		opts.DeviceName = c.BindDevice
 	}
 	opts.FastOpen = c.FastOpen
+	opts.UDPResolveReuse = c.UDPResolveReuse
 	return outbounds.NewDirectOutboundWithOptions(opts)
 }
 
