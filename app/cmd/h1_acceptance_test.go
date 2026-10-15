@@ -117,7 +117,14 @@ func TestH1AcceptanceServer(t *testing.T) {
 	if cfg.Capture {
 		evidenceLogger = capture
 	}
-	s, err := server.NewServer(&server.Config{Conn: udp, TLSConfig: server.TLSConfig{Certificates: []tls.Certificate{cert}}, Authenticator: h1Authenticator{}, TrafficLogger: trafficlogger.NewTrafficStatsServer("synthetic-management-only"), QUICConfig: server.QUICConfig{MaxIdleTimeout: time.Duration(cfg.IdleSeconds) * time.Second}, QUICEvidenceConfig: server.QUICEvidenceConfig{Enabled: cfg.Evidence, StreamEvidence: cfg.Evidence, UDPEvidence: cfg.Evidence, Interval: time.Second}, QUICEvidenceLogger: evidenceLogger})
+	serverConfigCore := &server.Config{Conn: udp, TLSConfig: server.TLSConfig{Certificates: []tls.Certificate{cert}}, Authenticator: h1Authenticator{}, TrafficLogger: trafficlogger.NewTrafficStatsServer("synthetic-management-only"), QUICConfig: server.QUICConfig{MaxIdleTimeout: time.Duration(cfg.IdleSeconds) * time.Second}, QUICEvidenceConfig: server.QUICEvidenceConfig{Enabled: cfg.Evidence, StreamEvidence: cfg.Evidence, UDPEvidence: cfg.Evidence, Interval: time.Second}, QUICEvidenceLogger: evidenceLogger}
+	// Use the production app outbound construction, with the same DNS-reuse option
+	// in both evidence modes. Synthetic targets are literals, not Internet names.
+	outboundConfig := serverConfig{Outbounds: []serverConfigOutboundEntry{{Name: "default", Type: "direct", Direct: serverConfigOutboundDirect{UDPResolveReuse: true}}}}
+	if err := outboundConfig.fillOutboundConfig(serverConfigCore); err != nil {
+		t.Fatal(err)
+	}
+	s, err := server.NewServer(serverConfigCore)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -788,7 +795,7 @@ func TestH1EvidenceUDP(t *testing.T) {
 	time.Sleep(1100 * time.Millisecond)
 	found := false
 	for _, e := range w.metrics(t).Evidence {
-		if e.UDP != nil && e.UDP.TargetWrittenBytes == 4000 && e.UDP.TargetReadBytes == 4000 && e.UDP.EnqueuedPayloadBytes == 4000 && e.UDP.FragmentedMessages > 0 && e.UDP.SendTooLarge > 0 && e.UDP.DefragPending > 0 {
+		if e.UDP != nil && e.UDP.TargetWrittenBytes == 4000 && e.UDP.TargetReadBytes == 4000 && e.UDP.EnqueuedPayloadBytes == 4000 && e.UDP.FragmentedMessages > 0 && e.UDP.SendTooLarge > 0 && e.UDP.DefragPending > 0 && e.UDP.MaxTargetReadDatagramSize == 3000 && e.UDP.LastTooLargeMaxDatagramPayloadSize > 0 && e.UDP.MinTooLargeMaxDatagramPayloadSize > 0 {
 			found = true
 			if e.PacketEvidence || e.ReceivedPackets != nil || e.CongestionMode != "bbr" || e.NegotiatedServerTx != 0 {
 				t.Fatal("cheap-mode/auth coverage wrong")

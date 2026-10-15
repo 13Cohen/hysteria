@@ -177,6 +177,8 @@ func (e *udpSessionEntry) receiveLoop() {
 			if udpN > 0 {
 				u.targetReadDatagrams.Add(1)
 				u.targetReadBytes.Add(uint64(udpN))
+				for old := u.maxTargetReadSize.Load(); int64(udpN) > old && !u.maxTargetReadSize.CompareAndSwap(old, int64(udpN)); old = u.maxTargetReadSize.Load() {
+				}
 			}
 			if err != nil {
 				u.targetReadErrors.Add(1)

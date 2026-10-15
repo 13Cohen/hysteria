@@ -221,6 +221,8 @@ func (m *quicEvidence) tracer(ctx context.Context, _ logging.Perspective, _ quic
 	s := &evidenceState{created: time.Now(), packetEvidence: m.config.PacketEvidence}
 	if m.config.UDPEvidence {
 		s.udp = &udpEvidence{manager: m, connection: s}
+		s.udp.lastTooLargeMaxPayload.Store(-1)
+		s.udp.minTooLargeMaxPayload.Store(-1)
 		for i := range s.udp.operations {
 			s.udp.operations[i].owner = s.udp
 		}

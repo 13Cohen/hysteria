@@ -99,3 +99,18 @@ func TestUDPEvidenceSerializeDropPreservesReturn(t *testing.T) {
 		t.Fatal("silent serialization drop accounting/semantics changed")
 	}
 }
+
+func TestUDPEvidenceDatagramLimits(t *testing.T) {
+	_, u := newTestUDP(t)
+	s := u.snapshot(time.Now())
+	if s.LastTooLargeMaxDatagramPayloadSize != -1 || s.MinTooLargeMaxDatagramPayloadSize != -1 {
+		t.Fatal("unknown send limit must not be zero")
+	}
+	u.tooLarge(1200)
+	u.tooLarge(1300)
+	u.tooLarge(1150)
+	s = u.snapshot(time.Now())
+	if s.LastTooLargeMaxDatagramPayloadSize != 1150 || s.MinTooLargeMaxDatagramPayloadSize != 1150 || s.SendTooLarge != 3 {
+		t.Fatal("observed maximum payload limit aggregation wrong")
+	}
+}

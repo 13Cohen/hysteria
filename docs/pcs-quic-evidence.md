@@ -242,3 +242,11 @@ for both TCP and UDP. TCP still verifies 130 MiB and 256 small requests per run;
 UDP verifies 16384 1000-byte echoes (32,768,000 bytes, both directions), increasing
 run duration to reduce quota-boundary noise. Prior failing matrices remain above;
 the 5% throughput and 20% server CPU/byte gates remain unchanged.
+
+UDP fragmentation evidence also retains the last/minimum observed
+`DatagramTooLargeError.MaxDatagramPayloadSize` as
+`last_too_large_max_datagram_payload_size` and
+`min_too_large_max_datagram_payload_size` (`-1` until observed), plus
+`max_target_read_datagram_size` (zero with zero reads means unobserved). These are
+application/peer DATAGRAM send-limit observations, not measured path MTU; compare
+with QUIC MTU and fragmentation counters without equating their units/headers.

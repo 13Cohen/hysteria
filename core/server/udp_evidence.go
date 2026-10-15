@@ -10,28 +10,31 @@ import (
 // All counters belong to one authenticated QUIC connection. There is no extra
 // per-UDP-session registry. Successful SendDatagram means queued, not delivered.
 type UDPEvidence struct {
-	WaitsBestEffort             bool              `json:"waits_best_effort"`
-	ReceiveQueueDropsObservable bool              `json:"receive_queue_drops_observable"`
-	ReceivedDatagrams           uint64            `json:"received_datagrams"`
-	ReceivedPayloadBytes        uint64            `json:"received_payload_bytes"`
-	ParseErrors                 uint64            `json:"parse_errors"`
-	TargetReadDatagrams         uint64            `json:"target_read_datagrams"`
-	TargetReadBytes             uint64            `json:"target_read_bytes"`
-	TargetReadErrors            uint64            `json:"target_read_errors"`
-	TargetWriteCalls            uint64            `json:"target_write_calls"`
-	TargetWrittenBytes          uint64            `json:"target_written_bytes"`
-	TargetWriteErrors           uint64            `json:"target_write_errors"`
-	DefragPending               uint64            `json:"defrag_pending"`
-	SendAttempts                uint64            `json:"send_attempts"`
-	EnqueuedDatagrams           uint64            `json:"enqueued_datagrams"`
-	EnqueuedPayloadBytes        uint64            `json:"enqueued_payload_bytes"`
-	SendTooLarge                uint64            `json:"send_too_large"`
-	SendErrors                  uint64            `json:"send_errors"`
-	SerializeDrops              uint64            `json:"serialize_drops"`
-	FragmentedMessages          uint64            `json:"fragmented_messages"`
-	FragmentsAttempted          uint64            `json:"fragments_attempted"`
-	UntrackedOperations         uint64            `json:"untracked_operations_total"`
-	Waits                       []UDPWaitEvidence `json:"waits"`
+	LastTooLargeMaxDatagramPayloadSize int64             `json:"last_too_large_max_datagram_payload_size"`
+	MinTooLargeMaxDatagramPayloadSize  int64             `json:"min_too_large_max_datagram_payload_size"`
+	MaxTargetReadDatagramSize          int64             `json:"max_target_read_datagram_size"`
+	WaitsBestEffort                    bool              `json:"waits_best_effort"`
+	ReceiveQueueDropsObservable        bool              `json:"receive_queue_drops_observable"`
+	ReceivedDatagrams                  uint64            `json:"received_datagrams"`
+	ReceivedPayloadBytes               uint64            `json:"received_payload_bytes"`
+	ParseErrors                        uint64            `json:"parse_errors"`
+	TargetReadDatagrams                uint64            `json:"target_read_datagrams"`
+	TargetReadBytes                    uint64            `json:"target_read_bytes"`
+	TargetReadErrors                   uint64            `json:"target_read_errors"`
+	TargetWriteCalls                   uint64            `json:"target_write_calls"`
+	TargetWrittenBytes                 uint64            `json:"target_written_bytes"`
+	TargetWriteErrors                  uint64            `json:"target_write_errors"`
+	DefragPending                      uint64            `json:"defrag_pending"`
+	SendAttempts                       uint64            `json:"send_attempts"`
+	EnqueuedDatagrams                  uint64            `json:"enqueued_datagrams"`
+	EnqueuedPayloadBytes               uint64            `json:"enqueued_payload_bytes"`
+	SendTooLarge                       uint64            `json:"send_too_large"`
+	SendErrors                         uint64            `json:"send_errors"`
+	SerializeDrops                     uint64            `json:"serialize_drops"`
+	FragmentedMessages                 uint64            `json:"fragmented_messages"`
+	FragmentsAttempted                 uint64            `json:"fragments_attempted"`
+	UntrackedOperations                uint64            `json:"untracked_operations_total"`
+	Waits                              []UDPWaitEvidence `json:"waits"`
 }
 type UDPWaitEvidence struct {
 	Direction    string `json:"direction"`
@@ -68,6 +71,7 @@ type udpOperation struct {
 	owner     *udpEvidence // fixed before the operation is first published
 }
 type udpEvidence struct {
+	lastTooLargeMaxPayload, minTooLargeMaxPayload, maxTargetReadSize                                atomic.Int64
 	manager                                                                                         *quicEvidence
 	connection                                                                                      *evidenceState
 	receivedDatagrams, receivedPayloadBytes, parseErrors                                            atomic.Uint64
@@ -133,7 +137,7 @@ func (op *udpOperation) complete(n int, err error) {
 	op.busy.Store(false)
 }
 func (u *udpEvidence) snapshot(now time.Time) *UDPEvidence {
-	e := &UDPEvidence{WaitsBestEffort: true, ReceivedDatagrams: u.receivedDatagrams.Load(), ReceivedPayloadBytes: u.receivedPayloadBytes.Load(), ParseErrors: u.parseErrors.Load(), TargetReadDatagrams: u.targetReadDatagrams.Load(), TargetReadBytes: u.targetReadBytes.Load(), TargetReadErrors: u.targetReadErrors.Load(), TargetWriteCalls: u.targetWriteCalls.Load(), TargetWrittenBytes: u.targetWrittenBytes.Load(), TargetWriteErrors: u.targetWriteErrors.Load(), DefragPending: u.defragPending.Load(), SendAttempts: u.sendAttempts.Load(), EnqueuedDatagrams: u.enqueuedDatagrams.Load(), EnqueuedPayloadBytes: u.enqueuedPayloadBytes.Load(), SendTooLarge: u.sendTooLarge.Load(), SendErrors: u.sendErrors.Load(), SerializeDrops: u.serializeDrops.Load(), FragmentedMessages: u.fragmentedMessages.Load(), FragmentsAttempted: u.fragmentsAttempted.Load(), UntrackedOperations: u.untrackedOperations.Load(), Waits: []UDPWaitEvidence{}}
+	e := &UDPEvidence{LastTooLargeMaxDatagramPayloadSize: u.lastTooLargeMaxPayload.Load(), MinTooLargeMaxDatagramPayloadSize: u.minTooLargeMaxPayload.Load(), MaxTargetReadDatagramSize: u.maxTargetReadSize.Load(), WaitsBestEffort: true, ReceivedDatagrams: u.receivedDatagrams.Load(), ReceivedPayloadBytes: u.receivedPayloadBytes.Load(), ParseErrors: u.parseErrors.Load(), TargetReadDatagrams: u.targetReadDatagrams.Load(), TargetReadBytes: u.targetReadBytes.Load(), TargetReadErrors: u.targetReadErrors.Load(), TargetWriteCalls: u.targetWriteCalls.Load(), TargetWrittenBytes: u.targetWrittenBytes.Load(), TargetWriteErrors: u.targetWriteErrors.Load(), DefragPending: u.defragPending.Load(), SendAttempts: u.sendAttempts.Load(), EnqueuedDatagrams: u.enqueuedDatagrams.Load(), EnqueuedPayloadBytes: u.enqueuedPayloadBytes.Load(), SendTooLarge: u.sendTooLarge.Load(), SendErrors: u.sendErrors.Load(), SerializeDrops: u.serializeDrops.Load(), FragmentedMessages: u.fragmentedMessages.Load(), FragmentsAttempted: u.fragmentsAttempted.Load(), UntrackedOperations: u.untrackedOperations.Load(), Waits: []UDPWaitEvidence{}}
 	for i := range u.operations {
 		op := &u.operations[i]
 		phase := op.phase.Load()
@@ -154,3 +158,10 @@ func evidenceForUDP(io udpIO) *udpEvidence {
 	return nil
 }
 func (io *udpIOImpl) udpEvidenceState() *udpEvidence { return io.Evidence }
+
+func (u *udpEvidence) tooLarge(maxPayload int64) {
+	u.sendTooLarge.Add(1)
+	u.lastTooLargeMaxPayload.Store(maxPayload)
+	for old := u.minTooLargeMaxPayload.Load(); (old < 0 || maxPayload < old) && !u.minTooLargeMaxPayload.CompareAndSwap(old, maxPayload); old = u.minTooLargeMaxPayload.Load() {
+	}
+}

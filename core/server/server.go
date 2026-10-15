@@ -429,7 +429,7 @@ func (io *udpIOImpl) SendMessage(buf []byte, msg *protocol.UDPMessage) error {
 		} else {
 			var tooLarge *quic.DatagramTooLargeError
 			if errors.As(err, &tooLarge) {
-				u.sendTooLarge.Add(1)
+				u.tooLarge(tooLarge.MaxDatagramPayloadSize)
 			} else {
 				u.sendErrors.Add(1)
 			}
