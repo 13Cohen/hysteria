@@ -43,6 +43,8 @@ type directOutbound struct {
 	DeviceName string
 	BindIP4    net.IP
 	BindIP6    net.IP
+
+	UDPResolveReuse bool
 }
 
 type DirectOutboundOptions struct {
@@ -53,6 +55,11 @@ type DirectOutboundOptions struct {
 	BindIP6    net.IP
 
 	FastOpen bool
+
+	// UDPResolveReuse enables a bounded, per-UDP-connection cache for successful
+	// system DNS fallback results. It does not affect caller-provided ResolveInfo.
+	// Disabled by default; see udpResolveReuseLifetime for the local reuse limit.
+	UDPResolveReuse bool
 }
 
 type noAddressError struct {
@@ -136,12 +143,13 @@ func NewDirectOutboundWithOptions(opts DirectOutboundOptions) (PluggableOutbound
 	}
 
 	return &directOutbound{
-		Mode:       opts.Mode,
-		DialFunc4:  dialFunc4,
-		DialFunc6:  dialFunc6,
-		DeviceName: opts.DeviceName,
-		BindIP4:    opts.BindIP4,
-		BindIP6:    opts.BindIP6,
+		Mode:            opts.Mode,
+		DialFunc4:       dialFunc4,
+		DialFunc6:       dialFunc6,
+		DeviceName:      opts.DeviceName,
+		BindIP4:         opts.BindIP4,
+		BindIP6:         opts.BindIP6,
+		UDPResolveReuse: opts.UDPResolveReuse,
 	}, nil
 }
 
@@ -292,7 +300,8 @@ func (d *directOutbound) dualStackDialTCP(ipv4, ipv6 net.IP, port uint16) (net.C
 type directOutboundUDPConn struct {
 	*directOutbound
 	*net.UDPConn
-	State udpConnState
+	State        udpConnState
+	resolveCache *udpResolveCache
 }
 
 func (u *directOutboundUDPConn) ReadFrom(b []byte) (int, *AddrEx, error) {
@@ -308,6 +317,22 @@ func (u *directOutboundUDPConn) ReadFrom(b []byte) (int, *AddrEx, error) {
 }
 
 func (u *directOutboundUDPConn) WriteTo(b []byte, addr *AddrEx) (int, error) {
+	if u.resolveCache == nil || addr.ResolveInfo != nil || isUDPLiteralHost(addr.Host) {
+		return u.writeTo(b, addr)
+	}
+	resolved, entry, err := u.resolveCache.resolve(addr)
+	if err != nil {
+		return 0, err
+	}
+	n, err := u.writeTo(b, resolved)
+	if err != nil {
+		// Do not keep retrying a cached address after a local send failure.
+		u.resolveCache.forget(addr, entry)
+	}
+	return n, err
+}
+
+func (u *directOutboundUDPConn) writeTo(b []byte, addr *AddrEx) (int, error) {
 	if addr.ResolveInfo == nil {
 		u.directOutbound.resolve(addr)
 	}
@@ -399,7 +424,18 @@ func (u *directOutboundUDPConn) WriteTo(b []byte, addr *AddrEx) (int, error) {
 }
 
 func (u *directOutboundUDPConn) Close() error {
+	if u.resolveCache != nil {
+		u.resolveCache.close()
+	}
 	return u.UDPConn.Close()
+}
+
+func (d *directOutbound) newUDPConn(conn *net.UDPConn, state udpConnState) *directOutboundUDPConn {
+	u := &directOutboundUDPConn{directOutbound: d, UDPConn: conn, State: state}
+	if d.UDPResolveReuse {
+		u.resolveCache = newUDPResolveCache(d.resolve)
+	}
+	return u
 }
 
 func (d *directOutbound) UDP(reqAddr *AddrEx) (UDPConn, error) {
@@ -416,11 +452,7 @@ func (d *directOutbound) UDP(reqAddr *AddrEx) (UDPConn, error) {
 				return nil, err
 			}
 		}
-		return &directOutboundUDPConn{
-			directOutbound: d,
-			UDPConn:        c,
-			State:          udpConnStateDualStack,
-		}, nil
+		return d.newUDPConn(c, udpConnStateDualStack), nil
 	} else {
 		// Bind address specified,
 		// need to check what kind of address is in reqAddr
@@ -498,10 +530,6 @@ func (d *directOutbound) UDP(reqAddr *AddrEx) (UDPConn, error) {
 		}
 		// We don't support binding to both device & address at the same time,
 		// so d.DeviceName is ignored in this case.
-		return &directOutboundUDPConn{
-			directOutbound: d,
-			UDPConn:        c,
-			State:          state,
-		}, nil
+		return d.newUDPConn(c, state), nil
 	}
 }
