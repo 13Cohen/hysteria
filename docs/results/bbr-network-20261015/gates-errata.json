@@ -1,0 +1,9 @@
+{
+  "recorded_at_utc": "2026-10-15T17:32:12.636899+00:00",
+  "does_not_change_algorithm_thresholds_or_existing_runs": true,
+  "frozen_document": "gates.json",
+  "correction": "The impairment index is SubmittedPackets, incremented before finite-queue admission. If the packet is not queue-dropped, index modulo 200 selects an injected drop and index modulo 97 selects an extra 40 ms delay. These are deterministic opportunities based on submitted arrivals, not every nth admitted packet. Exact injected and queue drop counters, rather than a claimed 0.5 percent admitted-packet rate, are used in results.",
+  "measurement_boundary": "Forwarded packet deltas may include a few warmup packets pending at the measurement start. Submitted minus forwarded is not used as a loss counter. QueueDrops and InjectedDrops are directly counted decisions. MaxQueueBytes and scheduler lateness include the short warmup; no post-hoc exclusion changes the validity gate.",
+  "delay_interpretation": "80 ms propagation per direction plus rate serialization and finite queuing. WarmupTCPMillis is full application exchange completion time and is not a QUIC RTT sample.",
+  "UDP_coverage": "Exact simulator drop decisions exclude the target-to-server UDP receive socket and application queues. Candidate target-read/enqueue can remain below target-offered bytes under backpressure. Client exact received payload is the end-to-end metric."
+}

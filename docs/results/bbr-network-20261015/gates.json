@@ -1,0 +1,81 @@
+{
+  "recorded_at_utc": "2026-10-15T17:11:18.426411+00:00",
+  "purpose": "Isolated network acceptance for server-only BBR pacer e99e90c; production is not changed.",
+  "baseline_source": "9baeab73ed0073add2fba7f837d9dae721ac8576",
+  "candidate_source": "e99e90c336c5096772b811ffb68366f37cd986e1",
+  "client_control": "All runs use the same baseline test binary/client. Only the server binary changes.",
+  "matrix": {
+    "order": [
+      "baseline",
+      "candidate",
+      "candidate",
+      "baseline"
+    ],
+    "connections": [
+      1,
+      4
+    ],
+    "profiles": [
+      "clean_tcp",
+      "loss_reorder_mixed"
+    ],
+    "link": {
+      "one_way_delay_ms": 80,
+      "download_bits_per_second": 4000000,
+      "upload_bits_per_second": 2000000,
+      "queue_limit_bytes_per_direction": 65536,
+      "IP_UDP_overhead_charged_bytes": 28
+    },
+    "impairment": {
+      "drop_every_nth_admitted_packet": 200,
+      "extra_delay_every_nth_admitted_packet": 97,
+      "extra_delay_ms": 40
+    },
+    "TCP": {
+      "bulk_total_bytes": 2097152,
+      "small_requests_total": 16,
+      "small_response_bytes": 8192,
+      "exact_payload_validation": true
+    },
+    "UDP_mixed": {
+      "total_datagrams_offered": 3600,
+      "payload_bytes": 1350,
+      "offered_duration_seconds": 12,
+      "sessions_per_connection": 2,
+      "receiver_validates_session_sequence_and_payload": true
+    },
+    "evidence_enabled": true,
+    "delivery_is_measured_at_client": true
+  },
+  "hard_reliability": [
+    "All reliable TCP streams complete with exact payload and no unexpected connection error",
+    "No corrupted/cross-session/duplicate UDP data is accepted",
+    "Trust/name/auth rejection remain enforced",
+    "Server does not crash, deadlock, or leak test processes"
+  ],
+  "no_regression": {
+    "candidate_aggregate_TCP_goodput_vs_baseline_min": 0.95,
+    "small_request_p95_latency_ratio_max": 1.2,
+    "server_CPU_per_received_total_payload_ratio_max": 1.2,
+    "UDP_delivery_fraction_absolute_decline_max": 0.02,
+    "candidate_UDP_received_goodput_ratio_min": 0.95
+  },
+  "congestion_benefit_required": {
+    "any_congested_group_goodput_ratio_min": 1.1,
+    "or_injected_plus_queue_dropped_packets_per_received_byte_ratio_max": 0.8,
+    "note": "No benefit means hold, not Internet improvement. All no-regression and reliability gates still apply."
+  },
+  "measurement_validity": [
+    "GOMAXPROCS=1, CPU<=0.4, memory<=512MiB and shared flock",
+    "Record server CPU separately from harness+simulator CPU and cgroup throttle",
+    "If scheduler lateness/CPU quota dominates delay, mark experiment inconclusive and investigate before deployment",
+    "Injected queue/random drops and QUIC loss decisions are separate; no conversion to Internet loss percentage",
+    "No simulated or loopback result alone demonstrates real Internet speed improvement"
+  ],
+  "simulation_validity_limits_before_network_runs": {
+    "scheduler_p95_lateness_us_max": 5000,
+    "CPU_throttled_usec_over_measurement_wall_max": 0.1,
+    "note": "Exceedance marks scenario inconclusive; does not silently weaken candidate performance gate."
+  },
+  "frozen_before_network_at_utc": "2026-10-15T17:14:26.808932+00:00"
+}
