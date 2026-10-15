@@ -45,3 +45,40 @@ rejections. Numeric results, source hashes and binary hashes are retained in
 [`results.json`](results/udp-accounting-network-20261015/results.json).
 The candidate keeps the original BBR pacer; it is suitable for a separately
 reviewed accounting-only release and subsequent production observation.
+
+## Production observation of the accounting-only release
+
+The immutable `224825dbc5e0dd01e55c27785d67caeb6e72a969` source was deployed as
+`pcsproxy2` at 2026-10-15 17:50:20.248322 UTC. The original BBR pacer remained in
+place; the experimental pacer was not included. A temporary client using the
+same CLI image verified the real certificate chain and server name without
+skipping verification, fetched an HTTPS response (200, 577 body bytes), and
+validated one UDP DNS response (29 request bytes, 61 response bytes). Its
+traffic generation window was 17:52:49.874215–17:52:51.545003 UTC. Its complete
+server-side connection lasted until 17:53:21.984500 UTC and ended with an idle
+timeout after client cleanup. The entire synthetic connection is excluded from
+natural-user observations.
+
+The exact first 30-minute window, 17:50:20.248322–18:20:20.248322 UTC, contains
+180 collector samples, a maximum sampling gap of 10.006 seconds, no collector
+errors, no counter resets, and no container restart. Only the synthetic
+connection was observed: **there were no natural authenticated user sessions**.
+API counters increased by 1,333 upload bytes and 9,015 download bytes, including
+TLS and the synthetic checks. Kernel UDP error counters and socket drops stayed
+at zero. These idle observations cannot estimate a user fault rate or prove a
+video-speed improvement.
+
+The process used 0.53 CPU seconds across the 1,790.048 seconds covered by samples.
+RSS median was 20.79 MiB and maximum 22.00 MiB. Compilation, isolated experiments,
+synthetic activity and pre-release validation on the shared host are explicitly
+recorded as excluded intervals. Adjacent samples wholly within the remaining
+segments cover 600.015 seconds and 0.16 process CPU seconds (0.0267% of one core),
+with zero application traffic. Counter differences never bridge an excluded
+interval. Some bounds deliberately include setup/cleanup and are labeled
+conservative, rather than represented as exact benchmark bounds.
+
+The bounded, sanitized evidence is in
+[`results/udp-accounting-postdeploy-20261015/30m.json`](results/udp-accounting-postdeploy-20261015/30m.json).
+It contains no client addresses, credentials, target addresses or session IDs.
+The corrected API counts each original attempted payload once; it remains an
+attempt counter, not proof of client delivery.

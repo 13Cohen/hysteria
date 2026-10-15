@@ -1,0 +1,229 @@
+{
+  "window_utc": [
+    "2026-10-15T17:50:20.248322Z",
+    "2026-10-15T18:20:20.248322Z"
+  ],
+  "production_source": "224825dbc5e0dd01e55c27785d67caeb6e72a969",
+  "natural_authenticated_sessions": 0,
+  "user_fault_rate": null,
+  "collector": {
+    "samples": 180,
+    "sample_bounds_utc": [
+      "2026-10-15T17:50:29.871502Z",
+      "2026-10-15T18:20:19.919436Z"
+    ],
+    "covered_seconds": 1790.0479340553284,
+    "sample_gap_seconds": {
+      "samples": 179,
+      "min": 9.999131917953491,
+      "median": 10.0001380443573,
+      "p95": 10.001099109649658,
+      "max": 10.006366968154907
+    },
+    "container_started_at": [
+      "2026-10-15T17:50:20.248322233Z"
+    ],
+    "issues": {},
+    "counter_deltas": {
+      "api.client_upload_read_bytes": 1333,
+      "api.client_download_read_bytes": 9015,
+      "cpu_seconds": 0.5299999999999999,
+      "udp_counters.InDatagrams": 59,
+      "udp_counters.OutDatagrams": 60,
+      "udp_counters.InErrors": 0,
+      "udp_counters.RcvbufErrors": 0,
+      "udp_counters.SndbufErrors": 0,
+      "udp_counters.InCsumErrors": 0,
+      "udp_counters.MemErrors": 0,
+      "udp6_counters.Udp6InDatagrams": 0,
+      "udp6_counters.Udp6OutDatagrams": 0,
+      "udp6_counters.Udp6InErrors": 0,
+      "udp6_counters.Udp6RcvbufErrors": 0,
+      "udp6_counters.Udp6SndbufErrors": 0,
+      "udp6_counters.Udp6InCsumErrors": 0,
+      "udp6_counters.Udp6MemErrors": 0,
+      "udp_443.drops": 0
+    },
+    "counter_resets": {},
+    "gauges": {
+      "api.online_connections": {
+        "samples": 180,
+        "min": 0,
+        "median": 0.0,
+        "p95": 0,
+        "max": 1
+      },
+      "api.online_auth_ids": {
+        "samples": 180,
+        "min": 0,
+        "median": 0.0,
+        "p95": 0,
+        "max": 1
+      },
+      "api.active_tcp_streams": {
+        "samples": 180,
+        "min": 0,
+        "median": 0.0,
+        "p95": 0,
+        "max": 1
+      },
+      "api.tcp_streams_without_read_activity_30s": {
+        "samples": 180,
+        "min": 0,
+        "median": 0.0,
+        "p95": 0,
+        "max": 1
+      },
+      "rss_kib": {
+        "samples": 180,
+        "min": 5832,
+        "median": 21292.0,
+        "p95": 22004,
+        "max": 22532
+      },
+      "udp_443.receive_queue_bytes": {
+        "samples": 180,
+        "min": 0,
+        "median": 0.0,
+        "p95": 0,
+        "max": 0
+      },
+      "udp_443.send_queue_bytes": {
+        "samples": 180,
+        "min": 0,
+        "median": 0.0,
+        "p95": 0,
+        "max": 0
+      },
+      "fd_count": {
+        "samples": 180,
+        "min": 7,
+        "median": 7.0,
+        "p95": 8,
+        "max": 9
+      }
+    },
+    "collector_flags": {}
+  },
+  "synthetic_health": {
+    "generation_window_utc": [
+      "2026-10-15T17:52:49.874215+00:00",
+      "2026-10-15T17:52:51.545003+00:00"
+    ],
+    "entire_connection_observation": [
+      {
+        "observed_start": "2026-10-15T17:52:51.032165Z",
+        "observed_end": "2026-10-15T17:53:21.984500Z",
+        "authenticated_in_window": true,
+        "counter_observation_span_seconds": 30.952334880828857
+      }
+    ],
+    "tls_certificate_and_name_verified": true,
+    "HTTPS_status": 200,
+    "HTTPS_body_bytes": 577,
+    "UDP_request_bytes": 29,
+    "UDP_response_bytes": 61,
+    "close_class": "idle_timeout",
+    "excluded_from_natural_sessions": true
+  },
+  "resource_exclusions": [
+    {
+      "label": "synthetic health client and entire observed QUIC lifetime",
+      "start": "2026-10-15T17:52:49.767246Z",
+      "end": "2026-10-15T17:53:21.984500Z",
+      "bounds": "client lock start through server close; exact recorded bounds"
+    },
+    {
+      "label": "Caddy complete build/protocol/race",
+      "start": "2026-10-15T17:53:14Z",
+      "end": "2026-10-15T18:03:00Z",
+      "bounds": "conservative; agent completion approximately18:02:44, extended through18:03:00"
+    },
+    {
+      "label": "Caddy clean race rerun",
+      "start": "2026-10-15T18:04:19Z",
+      "end": "2026-10-15T18:04:35Z",
+      "bounds": "recorded runner bounds"
+    },
+    {
+      "label": "Caddy one-connection8run experiment",
+      "start": "2026-10-15T18:05:00Z",
+      "end": "2026-10-15T18:06:40Z",
+      "bounds": "conservative setup/cleanup; measured18:05:04.413239\u201318:06:36.243948"
+    },
+    {
+      "label": "Hysteria original clean4 ABBA",
+      "start": "2026-10-15T18:08:01Z",
+      "end": "2026-10-15T18:08:47Z",
+      "bounds": "recorded exclusive lock bounds"
+    },
+    {
+      "label": "Hysteria original mixed4 ABBA",
+      "start": "2026-10-15T18:09:10Z",
+      "end": "2026-10-15T18:10:32Z",
+      "bounds": "recorded exclusive lock bounds"
+    },
+    {
+      "label": "AnyTLS baseline/race/first old CLI probe",
+      "start": "2026-10-15T18:10:57Z",
+      "end": "2026-10-15T18:12:25Z",
+      "bounds": "recorded final-acceptance.start/end"
+    },
+    {
+      "label": "AnyTLS second old CLI probe",
+      "start": "2026-10-15T18:13:44Z",
+      "end": "2026-10-15T18:13:46Z",
+      "bounds": "recorded runtime-smoke/baseline.start/end"
+    },
+    {
+      "label": "Caddy four-connection experiment and off smoke",
+      "start": "2026-10-15T18:17:00Z",
+      "end": "2026-10-15T18:19:05Z",
+      "bounds": "conservative setup/cleanup; four-connection measured18:17:04.035\u201318:18:35.168; off smoke through approximately18:18:58"
+    },
+    {
+      "label": "AnyTLS final old CLI positive control",
+      "start": "2026-10-15T18:19:11Z",
+      "end": "2026-10-15T18:19:14Z",
+      "bounds": "recorded runtime-smoke baseline start/end"
+    },
+    {
+      "label": "Caddy pre-release configuration validation",
+      "start": "2026-10-15T18:19:50Z",
+      "end": null,
+      "bounds": "conservative through report end; actual first validation18:19:52\u201355, root continuing validation; no production Caddy release or Mihomo compile yet"
+    }
+  ],
+  "qualified": {
+    "clean_collector_covered_seconds": 600.0149722099304,
+    "clean_collector_deltas": {
+      "api.client_upload_read_bytes": 0,
+      "api.client_download_read_bytes": 0,
+      "cpu_seconds": 0.1599999999999999,
+      "udp_counters.InDatagrams": 0,
+      "udp_counters.OutDatagrams": 0,
+      "udp_counters.InErrors": 0,
+      "udp_counters.RcvbufErrors": 0,
+      "udp_counters.SndbufErrors": 0,
+      "udp_counters.InCsumErrors": 0,
+      "udp_counters.MemErrors": 0,
+      "udp6_counters.Udp6InDatagrams": 0,
+      "udp6_counters.Udp6OutDatagrams": 0,
+      "udp6_counters.Udp6InErrors": 0,
+      "udp6_counters.Udp6RcvbufErrors": 0,
+      "udp6_counters.Udp6SndbufErrors": 0,
+      "udp6_counters.Udp6InCsumErrors": 0,
+      "udp6_counters.Udp6MemErrors": 0,
+      "udp_443.drops": 0
+    },
+    "clean_collector_CPU_percent": 0.026666001251718738,
+    "fault_rate": null,
+    "fault_rate_reason": "No natural authenticated user session was observed.",
+    "limits": [
+      "Only adjacent collector samples within each unexcluded segment contribute deltas; counters never bridge an excluded interval.",
+      "Where an agent provided conservative setup/cleanup bounds, those wider bounds are explicitly labeled instead of claiming exact benchmark duration.",
+      "Absent natural user traffic cannot demonstrate video speed or user-failure improvement."
+    ]
+  },
+  "conclusion": "Deployment and idle stability observed. No natural user traffic; no demonstrated user-speed or fault-rate improvement. Old BBR pacer retained."
+}
