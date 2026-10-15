@@ -57,6 +57,9 @@ type h1Settings struct {
 type h1Ready struct{ UDP, Control string }
 type h1Metrics struct {
 	CPUSeconds                                      float64
+	UserCPUSeconds, SystemCPUSeconds                float64
+	VoluntarySwitches, InvoluntarySwitches          int64
+	CPUSampledAt                                    time.Time
 	TotalAlloc, HeapAlloc, NumGC, PauseNS, LogBytes uint64
 	Evidence                                        []server.QUICEvidence
 }
@@ -135,9 +138,14 @@ func TestH1AcceptanceServer(t *testing.T) {
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
 		var u syscall.Rusage
 		_ = syscall.Getrusage(syscall.RUSAGE_SELF, &u)
+		cpuSampledAt := time.Now()
 		var mem runtime.MemStats
 		runtime.ReadMemStats(&mem)
 		m := h1Metrics{CPUSeconds: float64(u.Utime.Sec+u.Stime.Sec) + float64(u.Utime.Usec+u.Stime.Usec)/1e6, TotalAlloc: mem.TotalAlloc, HeapAlloc: mem.HeapAlloc, NumGC: uint64(mem.NumGC), PauseNS: mem.PauseTotalNs, LogBytes: sink.n.Load()}
+		m.UserCPUSeconds = float64(u.Utime.Sec) + float64(u.Utime.Usec)/1e6
+		m.SystemCPUSeconds = float64(u.Stime.Sec) + float64(u.Stime.Usec)/1e6
+		m.VoluntarySwitches, m.InvoluntarySwitches = u.Nvcsw, u.Nivcsw
+		m.CPUSampledAt = cpuSampledAt
 		if cfg.Capture {
 			capture.mu.Lock()
 			m.Evidence = append(m.Evidence, capture.events...)
@@ -215,7 +223,11 @@ func h1StartWorker(t *testing.T, ca h1CA, evidence, capture bool, idle int) *h1W
 	if override := os.Getenv("PCS_H1_SERVER_BINARY"); override != "" {
 		binary = override
 	}
-	cmd := exec.Command(binary, "-test.run=^TestH1AcceptanceServer$", "-test.timeout=10m")
+	args := []string{"-test.run=^TestH1AcceptanceServer$", "-test.timeout=10m"}
+	if profile := os.Getenv("PCS_H1_SERVER_CPU_PROFILE"); profile != "" {
+		args = append(args, "-test.cpuprofile="+profile)
+	}
+	cmd := exec.Command(binary, args...)
 	cmd.Env = append(os.Environ(), "PCS_H1_HELPER=1", "PCS_H1_SETTINGS="+path)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

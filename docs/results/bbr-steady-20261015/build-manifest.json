@@ -1,0 +1,35 @@
+{
+  "recorded_at": "2026-10-15T18:37:41.443640+00:00",
+  "source_parent": "4080f47f5374936bde881cf22648cba45db2048f",
+  "baseline_override": "Original9baeab7 core/internal/congestion/bbr/bbr_sender.go, all other code identical",
+  "Go": "1.25.6",
+  "CGO_ENABLED": 0,
+  "build_lock_start": "2026-10-15T18:36:37Z",
+  "build_lock_end": "2026-10-15T18:37:11Z",
+  "files": {
+    "steady-baseline.test": {
+      "bytes": 24196215,
+      "sha256": "5154a8155d8cd30f38492cef4375d72751732bdf8b3311d99c8f278a0ce6a8b4"
+    },
+    "steady-candidate.test": {
+      "bytes": 24195999,
+      "sha256": "5a8ad7ec627a812a34aaec91313fee70abf064215566653a18604bf2913cc33d"
+    },
+    "app/cmd/h1_acceptance_test.go": {
+      "bytes": 31813,
+      "sha256": "9bae6f5063f769f1d4a0146ad9fb11fb831e27ba557250b263108b8a5741cec4"
+    },
+    "app/cmd/h2_network_acceptance_test.go": {
+      "bytes": 18500,
+      "sha256": "ca18e8250532ced94d0db0ffb2883a378f7d80a603fde44b6a07aab143bf2f77"
+    },
+    "app/cmd/h3_steady_acceptance_test.go": {
+      "bytes": 5797,
+      "sha256": "939e8156b255c1bedd1b67a0dc5d1517c5bda6e5bbe1b31eac0da069431767a1"
+    },
+    "core/internal/congestion/bbr/bbr_sender.go": {
+      "bytes": 33303,
+      "sha256": "c14e620f0ebc121acbb419fe0292f7962dc6dccd0cbec019089b7b1b25cbf836"
+    }
+  }
+}
