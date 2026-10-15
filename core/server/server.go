@@ -340,9 +340,16 @@ func (h *h3sHandler) masqHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// udpDatagramConn is the QUIC surface used by udpIOImpl.
+type udpDatagramConn interface {
+	ReceiveDatagram(context.Context) ([]byte, error)
+	SendDatagram([]byte) error
+	CloseWithError(quic.ApplicationErrorCode, string) error
+}
+
 // udpIOImpl is the IO implementation for udpSessionManager with TrafficLogger support
 type udpIOImpl struct {
-	Conn          *quic.Conn
+	Conn          udpDatagramConn
 	AuthID        string
 	TrafficLogger TrafficLogger
 	RequestHook   RequestHook
@@ -390,10 +397,20 @@ func (io *udpIOImpl) ReceiveMessage() (*protocol.UDPMessage, error) {
 }
 
 func (io *udpIOImpl) SendMessage(buf []byte, msg *protocol.UDPMessage) error {
+	return io.sendMessage(buf, msg, true)
+}
+
+// sendFragment retries part of an already-accounted original message. It is
+// used only by sendMessageAutoFrag after SendMessage reports DatagramTooLarge.
+func (io *udpIOImpl) sendFragment(buf []byte, msg *protocol.UDPMessage) error {
+	return io.sendMessage(buf, msg, false)
+}
+
+func (io *udpIOImpl) sendMessage(buf []byte, msg *protocol.UDPMessage, account bool) error {
 	if io.Evidence != nil {
 		io.Evidence.sendAttempts.Add(1)
 	}
-	if io.TrafficLogger != nil {
+	if account && io.TrafficLogger != nil {
 		op := io.Evidence.begin(udpPhaseSendAccounting, len(msg.Data))
 		ok := io.TrafficLogger.LogTraffic(io.AuthID, 0, uint64(len(msg.Data)))
 		var evidenceErr error

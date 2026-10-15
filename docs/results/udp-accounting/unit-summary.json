@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "base_commit": "9baeab7",
+  "candidate_branch": "pcs/udp-payload-accounting",
+  "production_changed": false,
+  "test": {
+    "command": "go test -p 1 -mod=readonly -count=1 -run ^TestUDPPayloadAccounting -v ./server",
+    "go": "1.25.6",
+    "start_utc": "2026-10-15T15:29:57Z",
+    "end_utc": "2026-10-15T15:30:11Z",
+    "status": "passed",
+    "test_binary_elapsed_seconds": 0.016,
+    "table_cases": 8,
+    "denied_payload_sizes": [
+      0,
+      100,
+      250
+    ],
+    "concurrent_original_messages": 16,
+    "network": "none",
+    "cpu_limit": 0.25,
+    "memory_bytes": 536870912,
+    "goprocs": 1,
+    "shared_experiment_lock": true,
+    "initial_failed_run_reason": "test double incorrectly required receive parser acceptance for zero-payload send; test corrected without production code changes",
+    "race_run": false,
+    "integration_run": false
+  },
+  "example": {
+    "original_payload_bytes": 250,
+    "fragment_payload_bytes": [
+      100,
+      100,
+      50
+    ],
+    "logger_calls_before": 4,
+    "logger_calls_after": 1,
+    "accounted_payload_bytes_before": 500,
+    "accounted_payload_bytes_after": 250,
+    "send_attempts_before_and_after": 4,
+    "successful_enqueues_before_and_after": 3
+  },
+  "limits": [
+    "Attempted original payload accounting is not delivery accounting.",
+    "Authorization is once per complete original datagram, before any send; no new intermediate fragment callbacks.",
+    "No throughput/latency claim and no deployment."
+  ]
+}

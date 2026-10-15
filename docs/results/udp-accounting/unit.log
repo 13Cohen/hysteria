@@ -1,0 +1,27 @@
+start_utc=2026-10-15T15:29:57Z
+=== RUN   TestUDPPayloadAccounting
+=== RUN   TestUDPPayloadAccounting/plain
+=== RUN   TestUDPPayloadAccounting/zero_payload
+=== RUN   TestUDPPayloadAccounting/ordinary_failure_still_accounts_attempt
+=== RUN   TestUDPPayloadAccounting/fragmented_once
+=== RUN   TestUDPPayloadAccounting/first_fragment_fails
+=== RUN   TestUDPPayloadAccounting/second_fragment_fails
+=== RUN   TestUDPPayloadAccounting/fragment_too_large_not_recursively_retried
+=== RUN   TestUDPPayloadAccounting/serialize_drop_still_accounts_attempt
+--- PASS: TestUDPPayloadAccounting (0.00s)
+    --- PASS: TestUDPPayloadAccounting/plain (0.00s)
+    --- PASS: TestUDPPayloadAccounting/zero_payload (0.00s)
+    --- PASS: TestUDPPayloadAccounting/ordinary_failure_still_accounts_attempt (0.00s)
+    --- PASS: TestUDPPayloadAccounting/fragmented_once (0.00s)
+    --- PASS: TestUDPPayloadAccounting/first_fragment_fails (0.00s)
+    --- PASS: TestUDPPayloadAccounting/second_fragment_fails (0.00s)
+    --- PASS: TestUDPPayloadAccounting/fragment_too_large_not_recursively_retried (0.00s)
+    --- PASS: TestUDPPayloadAccounting/serialize_drop_still_accounts_attempt (0.00s)
+=== RUN   TestUDPPayloadAccountingDeniedBeforeAnySend
+--- PASS: TestUDPPayloadAccountingDeniedBeforeAnySend (0.00s)
+=== RUN   TestUDPPayloadAccountingConcurrentOriginalMessages
+--- PASS: TestUDPPayloadAccountingConcurrentOriginalMessages (0.00s)
+PASS
+ok  	github.com/apernet/hysteria/core/v2/server	0.016s
+end_utc=2026-10-15T15:30:11Z
+exit_status=0

@@ -24,6 +24,13 @@ type udpIO interface {
 	UDP(reqAddr string) (UDPConn, error)
 }
 
+// udpFragmentSender sends fragments of a message whose complete payload was
+// already accounted and authorized by SendMessage. Other udpIO implementations
+// keep their existing SendMessage behavior.
+type udpFragmentSender interface {
+	sendFragment([]byte, *protocol.UDPMessage) error
+}
+
 type udpEventLogger interface {
 	New(sessionID uint32, reqAddr string)
 	Close(sessionID uint32, err error)
@@ -227,11 +234,15 @@ func sendMessageAutoFrag(io udpIO, buf []byte, msg *protocol.UDPMessage) error {
 		// Message too large, try fragmentation
 		msg.PacketID = uint16(rand.Intn(0xFFFF)) + 1
 		fMsgs := frag.FragUDPMessage(msg, int(errTooLarge.MaxDatagramPayloadSize))
+		sendFragment := io.SendMessage
+		if sender, ok := io.(udpFragmentSender); ok {
+			sendFragment = sender.sendFragment
+		}
 		for _, fMsg := range fMsgs {
 			if u != nil {
 				u.fragmentsAttempted.Add(1)
 			}
-			err := io.SendMessage(buf, &fMsg)
+			err := sendFragment(buf, &fMsg)
 			if err != nil {
 				return err
 			}
