@@ -1,0 +1,97 @@
+[
+  {
+    "sha": "93f68c526b2bf5b45ac7d8577698aa754b699ffc",
+    "date": "2026-05-08T21:16:21Z",
+    "subject": "feat: Hysteria Realms (#1560)"
+  },
+  {
+    "sha": "14500fdb408f3301ccda2be01555f75b6bb7782c",
+    "date": "2026-03-29T21:52:14Z",
+    "subject": "ci: test workflow"
+  },
+  {
+    "sha": "b3f2193f1053d031b9d42a454ed8155e004a39b9",
+    "date": "2026-03-28T20:11:17Z",
+    "subject": "feat: add configurable congestion modes and BBR profiles"
+  },
+  {
+    "sha": "61c75a260f935a6c5adf2f3ce0441f117c65fcbb",
+    "date": "2026-03-28T01:13:57Z",
+    "subject": "fix: BBR scale window for datagram size"
+  },
+  {
+    "sha": "275bcccaa4499458825d5822a611693ca98cb443",
+    "date": "2026-02-17T09:37:20Z",
+    "subject": "feat: quic-go v0.59.0"
+  },
+  {
+    "sha": "f68d036bff6dfdecd0ce945f8068985960cb2a83",
+    "date": "2026-01-11T19:06:12Z",
+    "subject": "feat: migrate to new monotime congestion interface"
+  },
+  {
+    "sha": "4bf55a99ede37ee6112833ec234914010ab6337d",
+    "date": "2025-12-30T03:24:30Z",
+    "subject": "fix: logic issues with BBR impl"
+  },
+  {
+    "sha": "44235d3de965287f6782cfadaacb2d1ed15a808f",
+    "date": "2025-09-13T23:17:59Z",
+    "subject": "feat: quic-go v0.54.0"
+  },
+  {
+    "sha": "a852febc1f87bb1d7924c360748e3379eb9a993c",
+    "date": "2024-06-15T22:42:39Z",
+    "subject": "fix: incorrect speed conversion base"
+  },
+  {
+    "sha": "09b08fa494cc75416da191f18b46cd72f05121cf",
+    "date": "2024-05-20T21:19:04Z",
+    "subject": "fix: try to fix maybeAppLimited 2"
+  },
+  {
+    "sha": "cd512ce1c61716e0456a74ec0c78c0a072388085",
+    "date": "2024-05-19T18:46:52Z",
+    "subject": "chore: various tweaks"
+  },
+  {
+    "sha": "5b0ab76d443ca9e1b58abf4dd52345e615f2267a",
+    "date": "2024-05-18T22:59:56Z",
+    "subject": "Merge branch 'master' into wip-rbq"
+  },
+  {
+    "sha": "e0e75c46309eec2531b8613370cfbada259b5af3",
+    "date": "2024-05-18T22:01:16Z",
+    "subject": "wip: BBR experimental changes"
+  },
+  {
+    "sha": "0c198abd2e47fc669b0e3818c9c3d82e6c766835",
+    "date": "2024-05-18T03:28:47Z",
+    "subject": "fix: mod name major version suffix v2"
+  },
+  {
+    "sha": "7c46e845a6e4d1355c1a4515fb8e94ebec2c89c3",
+    "date": "2023-10-11T02:54:43Z",
+    "subject": "fix: BBR memory leak"
+  },
+  {
+    "sha": "89429598bf897a34d61027cf7f68f5e35fcfff4b",
+    "date": "2023-10-07T01:27:30Z",
+    "subject": "fix: BBR bandwidth estimation edge case"
+  },
+  {
+    "sha": "844e94d6ca6d78811fbb07cdf5e8fdf66c92fce1",
+    "date": "2023-09-30T05:18:24Z",
+    "subject": "fix: reworked BBR to replace the broken old one"
+  },
+  {
+    "sha": "31dca9476d5ffb5a9ee6e55d7b9bd74210fa12cf",
+    "date": "2023-09-15T19:57:55Z",
+    "subject": "feat: bump quic-go (GSO fix)"
+  },
+  {
+    "sha": "45c3fc54bda4ae47af57cea1ce2e3f1f1c7daa45",
+    "date": "2023-08-05T00:29:15Z",
+    "subject": "feat: BBR"
+  }
+]

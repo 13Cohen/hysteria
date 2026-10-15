@@ -1,0 +1,36 @@
+{
+  "baseline_source": "9baeab73ed0073add2fba7f837d9dae721ac8576",
+  "diagnostic_commit": "bafdfef",
+  "candidate_commit": "e99e90c",
+  "upstream_fix": "4bf55a99ede37ee6112833ec234914010ab6337d",
+  "upstream_head_observed": "ca8fbd874fd6ca82413948de6dc5924405e103e1",
+  "quic_go": "v0.54.1-0.20250907230547-eb32f8aec5e2",
+  "resource_limits": {
+    "cpu": 0.25,
+    "memory_MiB": 384,
+    "memory_plus_swap_MiB": 768,
+    "GOMAXPROCS": 1,
+    "network": "none"
+  },
+  "runs": [
+    {
+      "name": "baseline",
+      "start_utc": "2026-10-15T15:22:29Z",
+      "end_utc": "2026-10-15T15:22:41Z",
+      "diagnostic_pass": true,
+      "diagnostic_package_s": 0.006,
+      "calculated_pacing_gate_pass": false,
+      "gate_package_s": 0.007
+    },
+    {
+      "name": "candidate",
+      "start_utc": "2026-10-15T15:23:23Z",
+      "end_utc": "2026-10-15T15:23:29Z",
+      "calculated_pacing_gate_pass": true,
+      "gate_package_s": 0.028
+    }
+  ],
+  "network_performance_tested": false,
+  "deployed": false,
+  "production_causality_established": false
+}

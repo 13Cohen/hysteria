@@ -1,0 +1,44 @@
+{
+  "upstream-current": {
+    "ref": "ca8fbd874fd6ca82413948de6dc5924405e103e1",
+    "url": "https://raw.githubusercontent.com/apernet/hysteria/ca8fbd874fd6ca82413948de6dc5924405e103e1/core/internal/congestion/bbr/bbr_sender.go",
+    "sha256": "f01c0059914aec04626007b1469d3866c0420cc1f03b293e847a3396767cdf1e"
+  },
+  "upstream-v2.6.4": {
+    "ref": "app/v2.6.4",
+    "url": "https://raw.githubusercontent.com/apernet/hysteria/app/v2.6.4/core/internal/congestion/bbr/bbr_sender.go",
+    "sha256": "f2aae2e9453eab27f713481a7940fd7fa11ba4b1121b5f0eb4a5d3ddbd153dca"
+  },
+  "recent_commits": [
+    {
+      "sha": "93f68c526b2bf5b45ac7d8577698aa754b699ffc",
+      "date": "2026-05-08T21:16:21Z",
+      "subject": "feat: Hysteria Realms (#1560)"
+    },
+    {
+      "sha": "14500fdb408f3301ccda2be01555f75b6bb7782c",
+      "date": "2026-03-29T21:52:14Z",
+      "subject": "ci: test workflow"
+    },
+    {
+      "sha": "b3f2193f1053d031b9d42a454ed8155e004a39b9",
+      "date": "2026-03-28T20:11:17Z",
+      "subject": "feat: add configurable congestion modes and BBR profiles"
+    },
+    {
+      "sha": "61c75a260f935a6c5adf2f3ce0441f117c65fcbb",
+      "date": "2026-03-28T01:13:57Z",
+      "subject": "fix: BBR scale window for datagram size"
+    },
+    {
+      "sha": "275bcccaa4499458825d5822a611693ca98cb443",
+      "date": "2026-02-17T09:37:20Z",
+      "subject": "feat: quic-go v0.59.0"
+    },
+    {
+      "sha": "f68d036bff6dfdecd0ce945f8068985960cb2a83",
+      "date": "2026-01-11T19:06:12Z",
+      "subject": "feat: migrate to new monotime congestion interface"
+    }
+  ]
+}
