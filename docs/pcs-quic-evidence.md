@@ -2,7 +2,7 @@
 
 This branch starts at the deployed Hysteria v2.6.4 commit `2146852c483b7e4f68f405023034b8241bfc49c6`. It keeps the existing `github.com/apernet/quic-go v0.54.1-0.20250907230547-eb32f8aec5e2` dependency. The repository is maintained separately from PCS deployment configuration. The upstream repository is now `HyNetworks/hysteria`; historical module paths and dependency versions are unchanged.
 
-**Candidate only: not approved for production rollout yet.** This change adds evidence, not a new congestion controller or a claimed speed improvement. H2 will evaluate cancellation-aware dialing and bounded fallback across all resolved addresses separately.
+**Isolated acceptance passed; production benefit still requires a monitored rollout.** Evidence is disabled by default and does not introduce a new congestion controller or claim a speed improvement. H2 will evaluate cancellation-aware dialing and bounded fallback across all resolved addresses separately.
 
 ## Enable explicitly
 
@@ -250,3 +250,60 @@ UDP fragmentation evidence also retains the last/minimum observed
 `max_target_read_datagram_size` (zero with zero reads means unobserved). These are
 application/peer DATAGRAM send-limit observations, not measured path MTU; compare
 with QUIC MTU and fragmentation counters without equating their units/headers.
+
+### Final combined candidate acceptance, 2026-10-15 (PASS)
+
+Code commit `646c50b` combines bounded evidence with routine-close aggregation,
+packet tracing opt-in, UDP observation, DATAGRAM limit gauges, the online HTTP
+statistics lock fix, and opt-in bounded direct UDP DNS result reuse. The final
+core/server and original TCP/UDP regressions passed under race detection (9.731 s
+and 21.693 s). App YAML/configuration tests passed under race detection (1.040 s):
+real DNS and UDP proved omitted/false `udpResolveReuse` preserved 4 queries per
+2 packets, while true yielded 2 queries with complete payloads. This tests the
+actual mapping and outbound pipeline, not just parsing a boolean. The first DNS
+fixture omitted AAAA answers and triggered extra resolver retries; it was corrected
+to answer both families, without changing product behavior to satisfy the test.
+
+The final binary passed verified TLS trust/name and authentication rejection,
+source-port rebinding, deterministic packet loss, known-pending TCP blackout and
+recovery, idle closure, actual UDP echo/fragmentation byte accounting, observed
+DATAGRAM limit gauges, and known UDP send-queue backpressure plus slow completion.
+Those test groups took 14.93 s, 1.14 s and 5.77 s. The UDP fault test intentionally
+loses packets; it asserts observable pending work and recovery, not reliable UDP
+payload delivery during an injected blackout.
+
+The final performance window was **14:54:29.052–14:59:02.290 UTC**. All four
+predeclared gates passed, with four alternating pairs per workload/connection
+count, retaining the same 5% throughput and 20% server CPU/byte thresholds:
+
+| Workload | QUIC connections | Throughput on/off | Server CPU/byte on/off |
+| --- | ---: | ---: | ---: |
+| TCP mixed bulk + small requests | 1 | 0.974151 | 1.027824 |
+| TCP mixed bulk + small requests | 8 | 1.010243 | 0.957748 |
+| UDP echo, 8 sessions | 1 | 0.987657 | 1.029316 |
+| UDP echo, 8 sessions | 8 | 0.975606 | 1.027921 |
+
+[Complete 36-run results, including reference runs](results/h1-20261015-routine-aggregate-pass.json)
+retain UTC bounds, all latency percentiles/per-connection maxima, valid payload
+counts, server and harness CPU, allocation/GC/log bytes, and actual cgroup
+usage/throttling/memory. No runs were removed. The final helper uses the real app
+outbound construction with DNS reuse true in both evidence modes; targets are
+loopback IP literals, so DNS reuse cannot explain the measured instrumentation
+comparison. Earlier matrices used core default outbound; their failed results
+remain above. The small positive 8-connection TCP difference is measurement
+variation, not a claimed speed improvement from instrumentation.
+
+The experiment cgroup used 0.6 CPU / 768 MiB and peaked cumulatively at
+99,938,304 bytes. Process CPU separates server from client/harness, while cgroup
+CPU contains both and is demonstrably throttled. Docker logging-daemon CPU is
+outside that cgroup. Transfer measurements include a 100 ms grace for queued log
+formatting/output in CPU accounting, but exclude initial authentication/warmup
+and outer-connection teardown; wall throughput excludes the grace. This is a
+bounded instrumentation-cost acceptance, not an Internet throughput prediction.
+
+The source remains disabled by default. Production activation is a separate
+reviewed rollout using an immutable source/image pin, rollback image/config and
+at least 30 minutes of post-deployment observation. Actual Shadowrocket/device
+interoperability and video-path benefit must be observed after rollout; the local
+synthetic Hysteria client cannot establish those. Existing user-space QUIC UDP
+receive-queue drop coverage and best-effort snapshot limits remain explicit.
